@@ -1,0 +1,1 @@
+python ./codeP/main.py --dataset  datasetName --model modelName --otherOptions OtherOptionsName --message "$1"
