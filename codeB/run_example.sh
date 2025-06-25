@@ -1,1 +1,1 @@
-python ./codeP/main.py --dataset  datasetName --model modelName --otherOptions OtherOptionsName --message "$1"
+python ./codeP/main.py --dataset Cora --model gcn --message "$1"
