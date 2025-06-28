@@ -16,9 +16,7 @@ class GCN(torch.nn.Module):
 
 def create_manual_graph(num_users=3, num_items=4, interactions=None):
     num_nodes = num_users + num_items
-    x = torch.zeros((num_nodes, 2))
-    x[:num_users, 0] = 1  # users
-    x[num_users:, 1] = 1  # items
+    x = torch.eye(num_nodes)
 
     if interactions is None:
         interactions = [(0, 3), (1, 4), (2, 5), (0, 4), (1, 6)]
@@ -37,7 +35,7 @@ def create_manual_graph(num_users=3, num_items=4, interactions=None):
     pos_set = set(interactions)
     neg_edges = []
     for u in range(num_users):
-        for i in range(num_users, num_nodes):
+        for i in range(num_users, num_users + num_items):
             if (u, i) not in pos_set:
                 neg_edges.append([u, i])
     neg_edges = torch.tensor(neg_edges, dtype=torch.long)
@@ -47,7 +45,7 @@ def create_manual_graph(num_users=3, num_items=4, interactions=None):
 def train_manual_gcn(num_users=3, num_items=4, interactions=None, epochs=100):
     x, edge_index, pos_edges, neg_edges = create_manual_graph(num_users, num_items, interactions)
 
-    model = GCN(input_dim=2, hidden_dim=8, output_dim=8)
+    model = GCN(input_dim=x.shape[1], hidden_dim=16, output_dim=16)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
     for epoch in range(epochs):
