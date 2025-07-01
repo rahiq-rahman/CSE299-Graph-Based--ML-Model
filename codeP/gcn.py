@@ -14,12 +14,9 @@ class GCN(torch.nn.Module):
         x = self.conv2(x, edge_index)
         return x
 
-def create_manual_graph(num_users=3, num_items=4, interactions=None):
+def create_manual_graph(num_users, num_items, interactions):
     num_nodes = num_users + num_items
     x = torch.eye(num_nodes)
-
-    if interactions is None:
-        interactions = [(0, 3), (1, 4), (2, 5), (0, 4), (1, 6)]
 
     user_nodes = []
     item_nodes = []
@@ -42,7 +39,7 @@ def create_manual_graph(num_users=3, num_items=4, interactions=None):
 
     return x, edge_index, pos_edges, neg_edges
 
-def train_manual_gcn(num_users=3, num_items=4, interactions=None, epochs=100):
+def train_manual_gcn(num_users, num_items, interactions, epochs=100):
     x, edge_index, pos_edges, neg_edges = create_manual_graph(num_users, num_items, interactions)
 
     model = GCN(input_dim=x.shape[1], hidden_dim=16, output_dim=16)
