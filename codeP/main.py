@@ -68,7 +68,7 @@ if args.model.lower() == "gcn":
         recs = gcn.recommend(model, x, edge_index, user_id, num_users, num_items, top_k=5)
         print(f"\nTop recommendations for user {user_id}:")
         for rank, (item_id, score) in enumerate(recs, start=1):
-            print(f"{rank}. Item {item_id} → Score: {score:.4f}")
+            print(f"{rank}. Item {item_id} -> Score: {score:.4f}")
 
 
 else:
