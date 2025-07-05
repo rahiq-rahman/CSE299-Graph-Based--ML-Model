@@ -1,0 +1,34 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+ENV/
+env/
+.venv/
+
+# Data files
+data/cora/
+data/karate_regression/
+data/movielens/
+data/datasetName/
+
+# Shell script logs/output (optional)
+*.log
+*.out
+
+# Jupyter Notebook Checkpoints (if applicable)
+.ipynb_checkpoints/
+
+# VSCode settings (if using)
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Others
+*.bak
+*.tmp
