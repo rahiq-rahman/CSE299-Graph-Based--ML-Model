@@ -63,19 +63,44 @@ def train_manual_gcn(num_users, num_items, interactions, epochs=100):
 
     return model, x, edge_index, num_users, num_items
 
-def add_interaction(edge_index, user, item):
-    new_edges = torch.tensor([[user, item], [item, user]], dtype=torch.long)
-    edge_index = torch.cat([edge_index, new_edges], dim=1)
-    return edge_index
+def train_node_classification(x, edge_index, labels, train_mask, test_mask, epochs=200):
+    model = GCN(input_dim=x.shape[1], hidden_dim=16, output_dim=labels.max().item() + 1)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
-def recommend(model, x, edge_index, user_id, num_users, num_items, top_k=3):
-    model.eval()
-    embeddings = model(x, edge_index)
+    for epoch in range(epochs):
+        model.train()
+        optimizer.zero_grad()
+        out = model(x, edge_index)
+        loss = F.cross_entropy(out[train_mask], labels[train_mask])
+        loss.backward()
+        optimizer.step()
 
-    item_ids = list(range(num_users, num_users + num_items))
-    scores = []
-    for item_id in item_ids:
-        score = (embeddings[user_id] * embeddings[item_id]).sum().item()
-        scores.append((item_id, score))
-    scores.sort(key=lambda x: x[1], reverse=True)
-    return scores[:top_k]
+        if epoch % 20 == 0:
+            model.eval()
+            preds = out[test_mask].argmax(dim=1)
+            acc = (preds == labels[test_mask]).sum().item() / test_mask.sum().item()
+            print(f"[GCN-NodeCls] Epoch {epoch} - Loss: {loss.item():.4f} - Test Acc: {acc:.4f}")
+
+    return model
+
+def train_node_regression(x, edge_index, targets, train_mask, test_mask, epochs=200):
+    model = GCN(input_dim=x.shape[1], hidden_dim=16, output_dim=1)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+
+    for epoch in range(epochs):
+        model.train()
+        optimizer.zero_grad()
+        out = model(x, edge_index).squeeze()
+        loss = F.mse_loss(out[train_mask], targets[train_mask])
+        loss.backward()
+        optimizer.step()
+
+        if epoch % 20 == 0:
+            model.eval()
+            test_preds = out[test_mask]
+            test_labels = targets[test_mask]
+            mse = F.mse_loss(test_preds, test_labels).item()
+            print(f"[GCN-NodeReg] Epoch {epoch} - Loss: {loss.item():.4f} - Test MSE: {mse:.4f}")
+
+    return model
+
