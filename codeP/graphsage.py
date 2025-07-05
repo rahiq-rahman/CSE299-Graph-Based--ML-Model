@@ -62,3 +62,45 @@ def train_graphsage(num_users, num_items, interactions, epochs=100):
             print(f"[GraphSAGE] Epoch {epoch} - Loss: {loss.item():.4f}")
 
     return model, x, edge_index, num_users, num_items
+
+def train_node_classification(x, edge_index, labels, train_mask, test_mask, epochs=200):
+    model = GraphSAGE(input_dim=x.shape[1], hidden_dim=16, output_dim=labels.max().item() + 1)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.005)
+
+    for epoch in range(epochs):
+        model.train()
+        optimizer.zero_grad()
+        out = model(x, edge_index)
+        loss = F.cross_entropy(out[train_mask], labels[train_mask])
+        loss.backward()
+        optimizer.step()
+
+        if epoch % 20 == 0:
+            model.eval()
+            preds = out[test_mask].argmax(dim=1)
+            acc = (preds == labels[test_mask]).sum().item() / test_mask.sum().item()
+            print(f"[GraphSAGE-NodeCls] Epoch {epoch} - Loss: {loss.item():.4f} - Test Acc: {acc:.4f}")
+
+    return model
+
+def train_node_regression(x, edge_index, targets, train_mask, test_mask, epochs=200):
+    model = GraphSAGE(input_dim=x.shape[1], hidden_dim=16, output_dim=1)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.005)
+
+    for epoch in range(epochs):
+        model.train()
+        optimizer.zero_grad()
+        out = model(x, edge_index).squeeze()
+        loss = F.mse_loss(out[train_mask], targets[train_mask])
+        loss.backward()
+        optimizer.step()
+
+        if epoch % 20 == 0:
+            model.eval()
+            test_preds = out[test_mask]
+            test_labels = targets[test_mask]
+            mse = F.mse_loss(test_preds, test_labels).item()
+            print(f"[GraphSAGE-NodeReg] Epoch {epoch} - Loss: {loss.item():.4f} - Test MSE: {mse:.4f}")
+
+    return model
+

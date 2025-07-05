@@ -2,99 +2,163 @@ import os
 import sys
 import argparse
 from load_movielens import load_movielens_from_udata
+from load_cora import load_cora
+from load_karate_regression import load_karate_regression
 
 sys.path.append(os.path.dirname(__file__))
 
 import gcn, gat, graphsage
 
 # Available Models
-
 available_models = {
-    "gcn": {"name": "GCN", "module": gcn.train_manual_gcn},
-    "gat": {"name": "GAT", "module": gat.train_gat},
-    "graphsage": {"name": "GraphSAGE", "module": graphsage.train_graphsage}
+    "gcn": {
+        "name": "GCN",
+        "module": {
+            "link_prediction": gcn.train_manual_gcn,
+            "node_classification": gcn.train_node_classification,
+            "node_regression": gcn.train_node_regression,
+        }
+    },
+    "gat": {
+        "name": "GAT",
+        "module": {
+            "link_prediction": gat.train_gat,
+            "node_classification": gat.train_node_classification,
+            "node_regression": gat.train_node_regression,
+        }
+    },
+    "graphsage": {
+        "name": "GraphSAGE",
+        "module": {
+            "link_prediction": graphsage.train_graphsage,
+            "node_classification": graphsage.train_node_classification,
+            "node_regression": graphsage.train_node_regression,
+        }
+    },
 }
 
 # Implemented Graph Tasks
-
 tasks = {
     "1": {"name": "Link Prediction", "function": "link_prediction"},
+    "2": {"name": "Node Classification", "function": "node_classification"},
+    "3": {"name": "Node Regression", "function": "node_regression"},
 }
 
-print("Available Graph-Based Tasks:")
-for key, task in tasks.items():
-    print(f"{key}. {task['name']}")
+# Task compatibility configuration
+task_config = {
+    "link_prediction": {
+        "models": ["gcn", "gat", "graphsage"],
+        "datasets": ["movielens"]
+    },
+    "node_classification": {
+        "models": ["gcn", "gat", "graphsage"],
+        "datasets": ["cora"]
+    },
+    "node_regression": {
+        "models": ["gcn", "gat", "graphsage"],
+        "datasets": ["karate_regression"]
+    }
+}
 
-# Available Tasks Selection
-
-task_choice = input("\nSelect a task by number (e.g., 1): ").strip()
-if task_choice not in tasks:
-    print("Invalid task. Exiting.")
-    exit()
-selected_task = tasks[task_choice]["function"]
-
-# Arguments
-
+# Parse Arguments
 parser = argparse.ArgumentParser()
 parser.add_argument('--model', required=False, type=str, help='Model name (e.g., gcn, gat)')
 parser.add_argument('--dataset', required=False, type=str, help='Dataset folder name inside /data')
-
 args = parser.parse_args()
-model_key = args.model
-dataset_key = args.dataset
-
-# Model Validation
-
-while model_key not in available_models:
-    if model_key is not None:
-        print(f"Model '{model_key}' not found.")
-    print("Available Models:", ", ".join(available_models.keys()))
-    model_key = input("Enter a valid model name: ").strip().lower()
-
-model_name = available_models[model_key]["name"]
-train_model_fn = available_models[model_key]["module"]
-
-# Dataset Validation
 
 data_root = os.path.join(os.path.dirname(__file__), "..", "data")
-available_datasets = [
-    d for d in os.listdir(data_root)
-    if os.path.isdir(os.path.join(data_root, d))
-]
 
-while dataset_key not in available_datasets:
-    if dataset_key is not None:
+model_key = args.model.lower() if args.model else None
+dataset_key = args.dataset.lower() if args.dataset else None
+
+def get_compatible_tasks(model_key, dataset_key):
+    compatible = {}
+    for task_key, config in task_config.items():
+        if model_key in config["models"] and dataset_key in config["datasets"]:
+            for task_id, task in tasks.items():
+                if task["function"] == task_key:
+                    compatible[task_id] = task
+                    break
+    return compatible
+
+# Task Selection
+if model_key and dataset_key:
+    if model_key not in available_models:
+        print(f"Model '{model_key}' not found.")
+        exit()
+
+    dataset_path = os.path.join(data_root, dataset_key)
+    if not os.path.isdir(dataset_path):
         print(f"Dataset '{dataset_key}' not found in /data folder.")
-    print("Available Datasets:", ", ".join(available_datasets))
-    dataset_key = input("Enter a valid dataset name: ").strip()
+        exit()
 
+    compatible_tasks = get_compatible_tasks(model_key, dataset_key)
+
+    if not compatible_tasks:
+        print(f"No compatible tasks found for model '{model_key}' and dataset '{dataset_key}'. Exiting.")
+        exit()
+
+    print("\nCompatible Tasks for provided model and dataset:")
+    for key, task in compatible_tasks.items():
+        print(f"{key}. {task['name']}")
+
+    task_choice = input("\nSelect a task by number (e.g., 1): ").strip()
+    if task_choice not in compatible_tasks:
+        print("Invalid task. Exiting.")
+        exit()
+
+    selected_task = compatible_tasks[task_choice]["function"]
+else:
+    print("Available Graph-Based Tasks:")
+    for key, task in tasks.items():
+        print(f"{key}. {task['name']}")
+
+    task_choice = input("\nSelect a task by number (e.g., 1): ").strip()
+    if task_choice not in tasks:
+        print("Invalid task. Exiting.")
+        exit()
+    selected_task = tasks[task_choice]["function"]
+
+    compatible_models = task_config[selected_task]["models"]
+    compatible_datasets = task_config[selected_task]["datasets"]
+
+    # Prompt for model
+    while model_key not in compatible_models:
+        if model_key is not None:
+            print(f"Model '{model_key}' is not compatible with task '{selected_task}'.")
+        print("Compatible Models:", ", ".join(compatible_models))
+        model_key = input("Enter a valid model name: ").strip().lower()
+
+    # Prompt for dataset
+    while dataset_key not in compatible_datasets:
+        if dataset_key is not None:
+            print(f"Dataset '{dataset_key}' is not compatible with task '{selected_task}'.")
+        print("Compatible Datasets:", ", ".join(compatible_datasets))
+        dataset_key = input("Enter a valid dataset name: ").strip()
+
+# Final validation & setup
+model_name = available_models[model_key]["name"]
+train_model_fn = available_models[model_key]["module"]
 dataset_name = dataset_key
 dataset_path = os.path.join(data_root, dataset_name)
 training_path = os.path.join(dataset_path, "training")
 testing_path = os.path.join(dataset_path, "testing")
 
-# Selected Dataset and Model Message
-
+# Final Info Display
 print(f"\nSelected Task: {tasks[task_choice]['name']}")
 print(f"Selected Model: {model_name}")
 print(f"Selected Dataset: {dataset_name}\n")
 
-
-# Performing Selected Tasks
-
+# Perform Task
 if selected_task == "link_prediction":
-    interactions = []
-
-    # Load training interactions
-    train_file = os.path.join('./data/movielens/training/', "u.data")
-    test_file = os.path.join('./data/movielens/testing/', "u.data")
+    train_file = os.path.join(training_path, "u.data")
+    test_file = os.path.join(testing_path, "u.data")
 
     interactions, num_users, num_items = load_movielens_from_udata(train_file)
     if not interactions:
         print("No training interactions found. Exiting.")
         exit()
 
-    # Train model
     model, x, edge_index, num_users, num_items = train_model_fn(
         num_users=num_users,
         num_items=num_items,
@@ -102,7 +166,7 @@ if selected_task == "link_prediction":
     )
 
     while True:
-        user_input = input(f"\nEnter user ID (0 to {num_users-1}) for recommendations, or 'q' to quit: ")
+        user_input = input(f"\nEnter user ID (0 to {num_users - 1}) for recommendations, or 'q' to quit: ")
         if user_input.lower() == 'q':
             break
         if not user_input.isdigit():
@@ -116,5 +180,77 @@ if selected_task == "link_prediction":
         print(f"\nTop recommendations for user {user_id}:")
         for rank, (item_id, score) in enumerate(recs, start=1):
             print(f"{rank}. Item {item_id} -> Score: {score:.4f}")
+
+elif selected_task == "node_classification":
+    training_dir = os.path.join(data_root, dataset_name, "training")
+    testing_dir = os.path.join(data_root, dataset_name, "testing")
+    x, edge_index, labels, train_mask, test_mask = load_cora(training_dir, testing_dir)
+
+    train_model_fn = available_models[model_key]["module"][selected_task]
+    model = train_model_fn(x, edge_index, labels, train_mask, test_mask)
+
+    model.eval()
+    out = model(x, edge_index)
+    preds = out.argmax(dim=1)
+
+    while True:
+        user_input = input(f"\nEnter a node ID (0 to {x.size(0)-1}) to predict its label (or 'q' to quit): ").strip()
+        if user_input.lower() == 'q':
+            break
+        if not user_input.isdigit():
+            print("Invalid input. Enter a valid node ID.")
+            continue
+
+        node_id = int(user_input)
+        if node_id < 0 or node_id >= x.size(0):
+            print(f"Node ID out of range (0 to {x.size(0)-1})")
+            continue
+
+        predicted_label = preds[node_id].item()
+        print(f"Node {node_id} is predicted to belong to class: {predicted_label}")
+
+        # show similar nodes
+        distances = (out - out[node_id]).norm(dim=1)
+        similar_nodes = distances.argsort()[1:6]
+        print("Top 5 most similar nodes (by embedding distance):")
+        for i, nid in enumerate(similar_nodes.tolist(), start=1):
+            print(f"{i}. Node {nid} - Predicted Class: {preds[nid].item()} - Distance: {distances[nid].item():.4f}")
+
+elif selected_task == "node_regression":
+    train_path = os.path.join(data_root, dataset_name, "training")
+    test_path = os.path.join(data_root, dataset_name, "testing")
+
+    x, edge_index, targets, train_mask, test_mask = load_karate_regression(train_path, test_path)
+    train_model_fn = available_models[model_key]["module"][selected_task]
+    model = train_model_fn(x, edge_index, targets, train_mask, test_mask)
+
+    model.eval()
+    out = model(x, edge_index).squeeze()
+
+    while True:
+        user_input = input(f"\nEnter a node ID (0 to {x.size(0)-1}) to predict its value (or 'q' to quit): ").strip()
+        if user_input.lower() == 'q':
+            break
+        if not user_input.isdigit():
+            print("Invalid input. Enter a valid node ID.")
+            continue
+
+        node_id = int(user_input)
+        if node_id < 0 or node_id >= x.size(0):
+            print(f"Node ID out of range (0 to {x.size(0)-1})")
+            continue
+
+        pred_value = out[node_id].item()
+        actual_value = targets[node_id].item()
+        print(f"Node {node_id} prediction: {pred_value:.4f} | Actual: {actual_value:.4f}")
+
+        # show similar nodes based on embedding distance
+        distances = (out - out[node_id]).abs()
+        similar_nodes = distances.argsort()[1:6]
+        print("\nTop 5 most similar nodes:")
+        for i, nid in enumerate(similar_nodes.tolist(), start=1):
+            print(f"{i}. Node {nid} - Predicted: {out[nid].item():.4f} | Actual: {targets[nid].item():.4f} | Difference: {abs(out[nid].item() - pred_value):.4f}")
+
+
 else:
     print("Task not implemented yet.")
