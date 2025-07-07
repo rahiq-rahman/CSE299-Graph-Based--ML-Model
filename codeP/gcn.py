@@ -104,3 +104,65 @@ def train_node_regression(x, edge_index, targets, train_mask, test_mask, epochs=
 
     return model
 
+
+def train_edge_classification(x, edge_index, edge_labels, train_mask, test_mask, epochs=200):
+    model = GCN(input_dim=x.size(1), hidden_dim=16, output_dim=16)
+    classifier = torch.nn.Linear(16, 2)
+    optimizer = torch.optim.Adam(list(model.parameters()) + list(classifier.parameters()), lr=0.01)
+
+    for epoch in range(epochs):
+        model.train()
+        classifier.train()
+        optimizer.zero_grad()
+
+        node_embeddings = model(x, edge_index)
+        src = edge_index[0]
+        dst = edge_index[1]
+        edge_emb = node_embeddings[src] * node_embeddings[dst]
+
+        edge_logits = classifier(edge_emb)
+        loss = F.cross_entropy(edge_logits[train_mask], edge_labels[train_mask])
+
+        loss.backward()
+        optimizer.step()
+
+        if epoch % 20 == 0:
+            model.eval()
+            classifier.eval()
+            with torch.no_grad():
+                preds = edge_logits[test_mask].argmax(dim=1)
+                acc = (preds == edge_labels[test_mask]).float().mean().item()
+                print(f"[GCN-EdgeCls] Epoch {epoch} - Loss: {loss.item():.4f} - Test Acc: {acc:.4f}")
+
+    return model, classifier
+
+
+def train_edge_regression(x, edge_index, edge_targets, train_mask, test_mask, epochs=200):
+    model = GCN(input_dim=x.size(1), hidden_dim=16, output_dim=16)
+    regressor = torch.nn.Linear(16, 1)
+    optimizer = torch.optim.Adam(list(model.parameters()) + list(regressor.parameters()), lr=0.01)
+
+    for epoch in range(epochs):
+        model.train()
+        regressor.train()
+        optimizer.zero_grad()
+
+        node_embeddings = model(x, edge_index)
+        edge_emb = node_embeddings[edge_index[0]] * node_embeddings[edge_index[1]]
+        pred = regressor(edge_emb).squeeze()
+
+        loss = F.mse_loss(pred[train_mask], edge_targets[train_mask])
+        loss.backward()
+        optimizer.step()
+
+        if epoch % 20 == 0:
+            model.eval()
+            regressor.eval()
+            with torch.no_grad():
+                test_pred = pred[test_mask]
+                test_true = edge_targets[test_mask]
+                mse = F.mse_loss(test_pred, test_true).item()
+                print(f"[GCN-EdgeReg] Epoch {epoch} - Loss: {loss.item():.4f} - Test MSE: {mse:.4f}")
+
+    return model, regressor
+

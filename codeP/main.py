@@ -1,9 +1,12 @@
 import os
 import sys
 import argparse
+import torch
 from load_movielens import load_movielens_from_udata
 from load_cora import load_cora
 from load_karate_regression import load_karate_regression
+from load_cora_edge import load_cora_edge
+from load_movielens_edge import load_movielens_edge
 
 sys.path.append(os.path.dirname(__file__))
 
@@ -17,6 +20,8 @@ available_models = {
             "link_prediction": gcn.train_manual_gcn,
             "node_classification": gcn.train_node_classification,
             "node_regression": gcn.train_node_regression,
+            "edge_classification": gcn.train_edge_classification,
+            "edge_regression": gcn.train_edge_regression,
         }
     },
     "gat": {
@@ -25,6 +30,8 @@ available_models = {
             "link_prediction": gat.train_gat,
             "node_classification": gat.train_node_classification,
             "node_regression": gat.train_node_regression,
+            "edge_classification": gat.train_edge_classification,
+            "edge_regression": gat.train_edge_regression,
         }
     },
     "graphsage": {
@@ -33,6 +40,8 @@ available_models = {
             "link_prediction": graphsage.train_graphsage,
             "node_classification": graphsage.train_node_classification,
             "node_regression": graphsage.train_node_regression,
+            "edge_classification": graphsage.train_edge_classification,
+            "edge_regression": graphsage.train_edge_regression,
         }
     },
 }
@@ -42,6 +51,8 @@ tasks = {
     "1": {"name": "Link Prediction", "function": "link_prediction"},
     "2": {"name": "Node Classification", "function": "node_classification"},
     "3": {"name": "Node Regression", "function": "node_regression"},
+    "4": {"name": "Edge Classification", "function": "edge_classification"},
+    "5": {"name": "Edge Regression", "function": "edge_regression"},
 }
 
 # Task compatibility configuration
@@ -57,6 +68,14 @@ task_config = {
     "node_regression": {
         "models": ["gcn", "gat", "graphsage"],
         "datasets": ["karate_regression"]
+    },
+    "edge_classification": {
+        "models": ["gcn", "gat", "graphsage"],
+        "datasets": ["cora_edge"]
+    },
+    "edge_regression": {
+        "models": ["gcn", "gat", "graphsage"],
+        "datasets": ["movielens_edge"]
     }
 }
 
@@ -250,6 +269,78 @@ elif selected_task == "node_regression":
         print("\nTop 5 most similar nodes:")
         for i, nid in enumerate(similar_nodes.tolist(), start=1):
             print(f"{i}. Node {nid} - Predicted: {out[nid].item():.4f} | Actual: {targets[nid].item():.4f} | Difference: {abs(out[nid].item() - pred_value):.4f}")
+
+
+elif selected_task == "edge_classification":
+    train_path = os.path.join(data_root, dataset_name, "training")
+    test_path = os.path.join(data_root, dataset_name, "testing")
+
+    x, edge_index, edge_labels, train_mask, test_mask = load_cora_edge(train_path, test_path)
+    train_model_fn = available_models[model_key]["module"][selected_task]
+    model, classifier = train_model_fn(x, edge_index, edge_labels, train_mask, test_mask)
+
+    model.eval()
+    classifier.eval()
+
+    with torch.no_grad():
+        node_embeddings = model(x, edge_index)
+        src = edge_index[0]
+        dst = edge_index[1]
+        edge_emb = node_embeddings[src] * node_embeddings[dst]
+        edge_logits = classifier(edge_emb)
+        probs = torch.softmax(edge_logits, dim=1)
+
+        while True:
+            edge_id_input = input(f"\nEnter edge index (0 to {edge_index.size(1)-1}) for prediction (or 'q' to quit): ").strip()
+            if edge_id_input.lower() == 'q':
+                break
+            if not edge_id_input.isdigit():
+                print("Invalid input.")
+                continue
+
+            eid = int(edge_id_input)
+            if eid < 0 or eid >= edge_index.size(1):
+                print("Out of range.")
+                continue
+
+            prob = probs[eid]
+            pred_label = torch.argmax(prob).item()
+            true_label = edge_labels[eid].item()
+            print(f"Edge ({edge_index[0,eid].item()}, {edge_index[1,eid].item()}) → Predicted: {pred_label}, True: {true_label}, Confidence: {prob[pred_label]:.4f}")
+
+
+elif selected_task == "edge_regression":
+    x, edge_index, edge_ratings, train_mask, test_mask = load_movielens_edge(
+        training_path, testing_path
+    )
+
+    train_model_fn = available_models[model_key]["module"][selected_task]
+    model, regressor = train_model_fn(x, edge_index, edge_ratings, train_mask, test_mask)
+
+    model.eval()
+    regressor.eval()
+    with torch.no_grad():
+        node_embeddings = model(x, edge_index)
+        edge_emb = node_embeddings[edge_index[0]] * node_embeddings[edge_index[1]]
+        pred = regressor(edge_emb).squeeze()
+
+        while True:
+            edge_id = input(f"\nEnter edge index (0 to {edge_index.size(1)-1}) for predicted rating (or 'q' to quit): ")
+            if edge_id.lower() == 'q':
+                break
+            if not edge_id.isdigit():
+                print("Invalid input.")
+                continue
+            eid = int(edge_id)
+            if eid < 0 or eid >= edge_index.size(1):
+                print("Out of range.")
+                continue
+
+            u = edge_index[0, eid].item()
+            v = edge_index[1, eid].item()
+            true_rating = edge_ratings[eid].item()
+            pred_rating = pred[eid].item()
+            print(f"Edge ({u}, {v}) → Predicted Rating: {pred_rating:.2f}, Actual: {true_rating:.2f}")
 
 
 else:
