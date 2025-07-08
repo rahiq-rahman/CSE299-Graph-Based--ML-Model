@@ -1,6 +1,7 @@
 import torch
 import torch.nn.functional as F
 from torch_geometric.nn import GATConv
+from sklearn.cluster import KMeans
 
 class GAT(torch.nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim, heads=2):
@@ -163,5 +164,28 @@ def train_edge_regression(x, edge_index, edge_targets, train_mask, test_mask, ep
 
     return model, regressor
 
+
+def train_node_embedding(x, edge_index, epochs=100):
+    model = GAT(input_dim=x.size(1), hidden_dim=16, output_dim=16)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.005)
+
+    for epoch in range(epochs):
+        model.train()
+        optimizer.zero_grad()
+        out = model(x, edge_index)
+        loss = (out ** 2).mean()
+        loss.backward()
+        optimizer.step()
+
+        if epoch % 20 == 0:
+            print(f"[GAT-NodeEmbed] Epoch {epoch} - Dummy Loss: {loss.item():.4f}")
+
+    return model, out.detach()
+
+def train_node_clustering(x, edge_index, num_clusters=7):
+    model, embeddings = train_node_embedding(x, edge_index)
+    kmeans = KMeans(n_clusters=num_clusters, random_state=42)
+    cluster_labels = kmeans.fit_predict(embeddings.numpy())
+    return model, embeddings, cluster_labels
 
 
