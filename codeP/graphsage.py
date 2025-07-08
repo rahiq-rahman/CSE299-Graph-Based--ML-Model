@@ -14,7 +14,7 @@ class GraphSAGE(torch.nn.Module):
         x = self.conv2(x, edge_index)
         return x
 
-def create_graph(num_users, num_items, interactions):
+def create_graph_graphsage(num_users, num_items, interactions):
     num_nodes = num_users + num_items
     x = torch.eye(num_nodes)
 
@@ -39,8 +39,8 @@ def create_graph(num_users, num_items, interactions):
 
     return x, edge_index, pos_edges, neg_edges
 
-def train_graphsage(num_users, num_items, interactions, epochs=100):
-    x, edge_index, pos_edges, neg_edges = create_graph(num_users, num_items, interactions)
+def train_link_prediction(num_users, num_items, interactions, epochs=100):
+    x, edge_index, pos_edges, neg_edges = create_graph_graphsage(num_users, num_items, interactions)
 
     model = GraphSAGE(input_dim=x.shape[1], hidden_dim=16, output_dim=16)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.005)

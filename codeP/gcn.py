@@ -14,7 +14,7 @@ class GCN(torch.nn.Module):
         x = self.conv2(x, edge_index)
         return x
 
-def create_manual_graph(num_users, num_items, interactions):
+def create_graph_gcn(num_users, num_items, interactions):
     num_nodes = num_users + num_items
     x = torch.eye(num_nodes)
 
@@ -39,8 +39,25 @@ def create_manual_graph(num_users, num_items, interactions):
 
     return x, edge_index, pos_edges, neg_edges
 
-def train_manual_gcn(num_users, num_items, interactions, epochs=100):
-    x, edge_index, pos_edges, neg_edges = create_manual_graph(num_users, num_items, interactions)
+def recommend(model, x, edge_index, user_id, num_users, num_items, top_k=5):
+    model.eval()
+    with torch.no_grad():
+        embeddings = model(x, edge_index)
+
+        user_emb = F.normalize(embeddings[user_id], dim=0)
+        item_ids = list(range(num_users, num_users + num_items))
+
+        scores = []
+        for item_id in item_ids:
+            item_emb = F.normalize(embeddings[item_id], dim=0)
+            score = (user_emb * item_emb).sum().item()  # cosine similarity
+            scores.append((item_id, score))
+
+        scores.sort(key=lambda x: x[1], reverse=True)
+        return scores[:top_k]
+
+def train_link_prediction(num_users, num_items, interactions, epochs=100):
+    x, edge_index, pos_edges, neg_edges = create_graph_gcn(num_users, num_items, interactions)
 
     model = GCN(input_dim=x.shape[1], hidden_dim=16, output_dim=16)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
@@ -54,7 +71,11 @@ def train_manual_gcn(num_users, num_items, interactions, epochs=100):
         pos_scores = (embeddings[pos_edges[:,0]] * embeddings[pos_edges[:,1]]).sum(dim=1)
         neg_scores = (embeddings[neg_edges[:,0]] * embeddings[neg_edges[:,1]]).sum(dim=1)
 
-        loss = - (torch.log(torch.sigmoid(pos_scores)).mean() + torch.log(1 - torch.sigmoid(neg_scores)).mean())
+        epsilon = 1e-7
+        pos_probs = torch.sigmoid(pos_scores).clamp(min=epsilon, max=1 - epsilon)
+        neg_probs = torch.sigmoid(neg_scores).clamp(min=epsilon, max=1 - epsilon)
+
+        loss = - (torch.log(pos_probs).mean() + torch.log(1 - neg_probs).mean())
         loss.backward()
         optimizer.step()
 

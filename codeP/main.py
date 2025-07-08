@@ -17,7 +17,7 @@ available_models = {
     "gcn": {
         "name": "GCN",
         "module": {
-            "link_prediction": gcn.train_manual_gcn,
+            "link_prediction": gcn.train_link_prediction,
             "node_classification": gcn.train_node_classification,
             "node_regression": gcn.train_node_regression,
             "edge_classification": gcn.train_edge_classification,
@@ -27,7 +27,7 @@ available_models = {
     "gat": {
         "name": "GAT",
         "module": {
-            "link_prediction": gat.train_gat,
+            "link_prediction": gat.train_link_prediction,
             "node_classification": gat.train_node_classification,
             "node_regression": gat.train_node_regression,
             "edge_classification": gat.train_edge_classification,
@@ -37,7 +37,7 @@ available_models = {
     "graphsage": {
         "name": "GraphSAGE",
         "module": {
-            "link_prediction": graphsage.train_graphsage,
+            "link_prediction": graphsage.train_link_prediction,
             "node_classification": graphsage.train_node_classification,
             "node_regression": graphsage.train_node_regression,
             "edge_classification": graphsage.train_edge_classification,
@@ -157,7 +157,7 @@ else:
 
 # Final validation & setup
 model_name = available_models[model_key]["name"]
-train_model_fn = available_models[model_key]["module"]
+train_model_fn = available_models[model_key]["module"][selected_task]
 dataset_name = dataset_key
 dataset_path = os.path.join(data_root, dataset_name)
 training_path = os.path.join(dataset_path, "training")
