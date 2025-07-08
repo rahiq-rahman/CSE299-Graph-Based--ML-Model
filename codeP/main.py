@@ -2,11 +2,17 @@ import os
 import sys
 import argparse
 import torch
+import torch.utils.data
 from load_movielens import load_movielens_from_udata
 from load_cora import load_cora
 from load_karate_regression import load_karate_regression
 from load_cora_edge import load_cora_edge
 from load_movielens_edge import load_movielens_edge
+from torch_geometric.datasets import TUDataset
+from torch_geometric.loader import DataLoader
+from load_graph_embedding import load_graph_embedding
+from load_graph_regression import load_graph_regression
+from load_graph_similarity import load_graph_similarity
 
 sys.path.append(os.path.dirname(__file__))
 
@@ -23,7 +29,8 @@ available_models = {
             "edge_classification": gcn.train_edge_classification,
             "edge_regression": gcn.train_edge_regression,
             "node_clustering": gcn.train_node_clustering,
-            "node_embedding": gcn.train_node_embedding
+            "node_embedding": gcn.train_node_embedding,
+            "graph_classification": gcn.train_graph_classification, 
         }
     },
     "gat": {
@@ -35,7 +42,8 @@ available_models = {
             "edge_classification": gat.train_edge_classification,
             "edge_regression": gat.train_edge_regression,
             "node_clustering": gat.train_node_clustering,
-            "node_embedding": gat.train_node_embedding
+            "node_embedding": gat.train_node_embedding,
+            "graph_classification": gat.train_graph_classification,
         }
     },
     "graphsage": {
@@ -47,7 +55,8 @@ available_models = {
             "edge_classification": graphsage.train_edge_classification,
             "edge_regression": graphsage.train_edge_regression,
             "node_clustering": graphsage.train_node_clustering,
-            "node_embedding": graphsage.train_node_embedding
+            "node_embedding": graphsage.train_node_embedding,
+            "graph_classification": graphsage.train_graph_classification,
         }
     },
 }
@@ -60,7 +69,11 @@ tasks = {
     "4": {"name": "Edge Classification", "function": "edge_classification"},
     "5": {"name": "Edge Regression", "function": "edge_regression"},
     "6": {"name": "Node Clustering", "function": "node_clustering"},
-    "7": {"name": "Node Embedding", "function": "node_embedding"}
+    "7": {"name": "Node Embedding", "function": "node_embedding"},
+    "8": {"name": "Graph Classification", "function": "graph_classification"},
+    "9": {"name": "Graph Regression", "function": "graph_regression"},
+    "10": {"name": "Graph Embedding", "function": "graph_embedding"},
+    "11": {"name": "Graph Similarity", "function": "graph_similarity"},
 }
 
 # Task compatibility configuration
@@ -92,7 +105,24 @@ task_config = {
     "node_embedding": {
         "models": ["gcn", "gat", "graphsage"],
         "datasets": ["cora", "karate_regression"]
+    },
+    "graph_classification": {
+        "models": ["gcn", "gat", "graphsage"],  # You can modify this based on your implementation
+        "datasets": ["mutag"]  # Or any dataset you're using for graph classification
+    },
+    "graph_regression": {
+        "models": ["gcn", "gat", "graphsage"],
+        "datasets": ["graph_regression"]  # folder name inside /data
+    },
+    "graph_embedding": {
+        "models": ["gcn", "gat", "graphsage"],
+        "datasets": ["graph_embedding"]
+    },
+    "graph_similarity": {
+        "models": ["gcn", "gat", "graphsage"],
+        "datasets": ["graph_similarity"]
     }
+
 }
 
 # Parse Arguments
@@ -384,6 +414,127 @@ elif selected_task == "node_clustering":
     for i in range(min(10, len(cluster_labels))):
         print(f"Node {i}: Cluster {cluster_labels[i]}")
 
+
+elif selected_task == "graph_classification":
+    dataset = TUDataset(root=os.path.join(data_root, dataset_name), name=dataset_name.upper(), use_node_attr=True)
+    
+    # Split dataset into train/test (80/20 split)
+    train_len = int(0.8 * len(dataset))
+    test_len = len(dataset) - train_len
+    train_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_len, test_len])
+
+    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
+
+    train_model_fn = available_models[model_key]["module"][selected_task]
+    model = train_model_fn(train_loader, test_loader)
+
+    print("\nGraph Classification training completed.")
+
+    # Interactive inference
+    while True:
+        graph_idx = input(f"\nEnter graph index (0 to {len(test_dataset)-1}) to predict label, or 'q' to quit: ").strip()
+        if graph_idx.lower() == 'q':
+            break
+        if not graph_idx.isdigit():
+            print("Invalid input.")
+            continue
+
+        idx = int(graph_idx)
+        if idx < 0 or idx >= len(test_dataset):
+            print("Index out of range.")
+            continue
+
+        model.eval()
+        data = test_dataset[idx]
+        with torch.no_grad():
+            out = model(data.x, data.edge_index, data.batch)
+            pred = out.argmax(dim=1).item()
+        print(f"Predicted class for graph {idx}: {pred}")
+
+
+elif selected_task == "graph_regression":
+    from torch_geometric.loader import DataLoader
+    from load_graph_regression import load_graph_regression
+
+    dataset = load_graph_regression(os.path.join(data_root, dataset_name))
+    loader = DataLoader(dataset, batch_size=32, shuffle=True)
+
+    train_model_fn = available_models[model_key]["module"][selected_task]
+    model = train_model_fn(loader)
+
+    print("\nGraph Regression training completed.")
+
+    while True:
+        graph_idx = input(f"\nEnter graph index (0 to {len(dataset)-1}) to predict value, or 'q' to quit: ").strip()
+        if graph_idx.lower() == 'q':
+            break
+        if not graph_idx.isdigit():
+            print("Invalid input.")
+            continue
+
+        idx = int(graph_idx)
+        if idx < 0 or idx >= len(dataset):
+            print("Index out of range.")
+            continue
+
+        data = dataset[idx]
+        model.eval()
+        with torch.no_grad():
+            pred = model(data.x, data.edge_index, data.batch).item()
+            true_val = data.y.item()
+        print(f"Predicted value for graph {idx}: {pred:.4f} | Actual value: {true_val:.4f}")
+
+
+elif selected_task == "graph_embedding":
+    from torch_geometric.loader import DataLoader
+    from load_graph_embedding import load_graph_embedding
+
+    dataset = load_graph_embedding(os.path.join(data_root, dataset_name))
+    loader = DataLoader(dataset, batch_size=32, shuffle=False)
+
+    train_model_fn = available_models[model_key]["module"][selected_task]
+    model, embeddings = train_model_fn(loader)
+
+    print("\nGraph Embeddings for first 10 graphs:")
+    for i in range(min(10, embeddings.size(0))):
+        emb_str = ", ".join(f"{val:.4f}" for val in embeddings[i][:5])
+        print(f"Graph {i}: [{emb_str}, ...]")
+
+
+
+elif selected_task == "graph_similarity":
+    from torch_geometric.loader import DataLoader
+    from load_graph_similarity import load_graph_similarity
+
+    dataset = load_graph_similarity(os.path.join(data_root, dataset_name))
+    loader = DataLoader(dataset, batch_size=32, shuffle=True)
+
+    train_model_fn = available_models[model_key]["module"][selected_task]
+    model = train_model_fn(loader)
+
+    print("\nGraph Similarity model training completed.")
+
+    while True:
+        idx1 = input(f"\nEnter index of first graph (0 to {len(dataset)-1}), or 'q' to quit: ").strip()
+        if idx1.lower() == 'q':
+            break
+        idx2 = input(f"Enter index of second graph (0 to {len(dataset)-1}): ").strip()
+        if not (idx1.isdigit() and idx2.isdigit()):
+            print("Invalid input.")
+            continue
+
+        idx1, idx2 = int(idx1), int(idx2)
+        if idx1 < 0 or idx1 >= len(dataset) or idx2 < 0 or idx2 >= len(dataset):
+            print("Index out of range.")
+            continue
+
+        data1, data2, _ = dataset[idx1]
+        model.eval()
+        with torch.no_grad():
+            emb1, emb2 = model(data1, data2)
+            similarity = torch.cosine_similarity(emb1, emb2).item()
+        print(f"Similarity between graph {idx1} and {idx2}: {similarity:.4f}")
 
 
 else:

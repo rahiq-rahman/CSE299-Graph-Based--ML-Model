@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
-from torch_geometric.nn import GCNConv
 from sklearn.cluster import KMeans
+from torch_geometric.nn import GCNConv, global_mean_pool
 
 class GCN(torch.nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim):
@@ -194,3 +194,129 @@ def train_node_clustering(x, edge_index, num_clusters=7):
     cluster_labels = kmeans.fit_predict(embeddings.numpy())
 
     return model, embeddings, cluster_labels
+
+
+class GCNGraphClassifier(torch.nn.Module):
+    def __init__(self, input_dim, hidden_dim, num_classes):
+        super().__init__()
+        self.conv1 = GCNConv(input_dim, hidden_dim)
+        self.conv2 = GCNConv(hidden_dim, hidden_dim)
+        self.lin = torch.nn.Linear(hidden_dim, num_classes)
+
+    def forward(self, x, edge_index, batch):
+        x = F.relu(self.conv1(x, edge_index))
+        x = F.relu(self.conv2(x, edge_index))
+        x = global_mean_pool(x, batch)
+        return self.lin(x)
+
+def train_graph_classification(train_loader, test_loader):
+    data = next(iter(train_loader))
+    model = GCNGraphClassifier(data.num_node_features, 64, int(data.y.max().item() + 1))
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+    criterion = torch.nn.CrossEntropyLoss()
+
+    for epoch in range(20):
+        model.train()
+        for batch in train_loader:
+            optimizer.zero_grad()
+            out = model(batch.x, batch.edge_index, batch.batch)
+            loss = criterion(out, batch.y)
+            loss.backward()
+            optimizer.step()
+    return model
+
+class GCNGraphRegressor(torch.nn.Module):
+    def __init__(self, input_dim, hidden_dim):
+        super().__init__()
+        self.conv1 = GCNConv(input_dim, hidden_dim)
+        self.conv2 = GCNConv(hidden_dim, hidden_dim)
+        self.lin = torch.nn.Linear(hidden_dim, 1)
+
+    def forward(self, x, edge_index, batch):
+        x = F.relu(self.conv1(x, edge_index))
+        x = F.relu(self.conv2(x, edge_index))
+        x = global_mean_pool(x, batch)
+        return self.lin(x).squeeze()
+
+def train_graph_regression(train_loader, test_loader, epochs=20):
+    data = next(iter(train_loader))
+    model = GCNGraphRegressor(data.num_node_features, 64)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+    criterion = torch.nn.MSELoss()
+
+    for epoch in range(epochs):
+        model.train()
+        for batch in train_loader:
+            optimizer.zero_grad()
+            out = model(batch.x, batch.edge_index, batch.batch)
+            loss = criterion(out, batch.y.float())  # assume y is float for regression
+            loss.backward()
+            optimizer.step()
+
+        # Optional: add evaluation here, print loss, etc.
+
+    return model
+
+def generate_graph_embeddings(loader):
+    # You can reuse GCNGraphClassifier backbone without final linear layer or just get embeddings
+    class GCNGraphEmbedding(torch.nn.Module):
+        def __init__(self, input_dim, hidden_dim):
+            super().__init__()
+            self.conv1 = GCNConv(input_dim, hidden_dim)
+            self.conv2 = GCNConv(hidden_dim, hidden_dim)
+
+        def forward(self, x, edge_index, batch):
+            x = F.relu(self.conv1(x, edge_index))
+            x = F.relu(self.conv2(x, edge_index))
+            x = global_mean_pool(x, batch)
+            return x
+
+    data = next(iter(loader))
+    model = GCNGraphEmbedding(data.num_node_features, 64)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+
+    for epoch in range(20):
+        model.train()
+        for batch in loader:
+            optimizer.zero_grad()
+            emb = model(batch.x, batch.edge_index, batch.batch)
+            loss = (emb ** 2).mean()  # dummy loss to regularize embeddings
+            loss.backward()
+            optimizer.step()
+
+    # After training, generate embeddings for all graphs
+    model.eval()
+    embeddings = []
+    with torch.no_grad():
+        for batch in loader:
+            emb = model(batch.x, batch.edge_index, batch.batch)
+            embeddings.append(emb)
+    return model, torch.cat(embeddings, dim=0)
+
+class GCNGraphSimilarity(torch.nn.Module):
+    def __init__(self, input_dim, hidden_dim):
+        super().__init__()
+        self.embedding_net = GCNGraphClassifier(input_dim, hidden_dim, num_classes=hidden_dim)  # reuse embedding part only
+
+    def forward(self, data1, data2):
+        emb1 = self.embedding_net(data1.x, data1.edge_index, data1.batch)
+        emb2 = self.embedding_net(data2.x, data2.edge_index, data2.batch)
+        return emb1, emb2
+
+def train_graph_similarity(paired_loader, epochs=20):
+    # paired_loader yields (data1, data2, label) batches
+    model = GCNGraphSimilarity(input_dim=paired_loader.dataset[0][0].num_node_features, hidden_dim=64)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+    criterion = torch.nn.MSELoss()  # or contrastive loss
+
+    for epoch in range(epochs):
+        model.train()
+        for data1, data2, label in paired_loader:
+            optimizer.zero_grad()
+            emb1, emb2 = model(data1, data2)
+            sim = F.cosine_similarity(emb1, emb2)
+            loss = criterion(sim, label.float())  # label = similarity score
+            loss.backward()
+            optimizer.step()
+
+    return model
