@@ -1,27 +1,37 @@
 import os
 
-def load_movielens_from_udata(file_path, min_rating=4.0):
+def load_movielens_from_udata(filepath, return_ratings=False):
     interactions = []
-    user_set = set()
-    item_set = set()
+    user_ids = set()
+    item_ids = set()
 
-    with open(file_path, 'r') as f:
+    with open(filepath, 'r') as f:
         for line in f:
-            parts = line.strip().split('\t')  # u.data format: user\titem\trating\ttimestamp
+            parts = line.strip().split('\t')
             if len(parts) < 3:
                 continue
-            user, item, rating = int(parts[0]), int(parts[1]), float(parts[2])
-            if rating >= min_rating:
+            user = int(parts[0])
+            item = int(parts[1])
+            rating = float(parts[2])
+
+            user_ids.add(user)
+            item_ids.add(item)
+
+            if return_ratings:
+                interactions.append((user, item, rating))
+            else:
                 interactions.append((user, item))
-                user_set.add(user)
-                item_set.add(item)
 
-    # Remap to compact indices
-    user_list = sorted(list(user_set))
-    item_list = sorted(list(item_set))
+    user_id_map = {uid: idx for idx, uid in enumerate(sorted(user_ids))}
+    item_id_map = {iid: idx + len(user_id_map) for idx, iid in enumerate(sorted(item_ids))}
 
-    user_map = {u: i for i, u in enumerate(user_list)}
-    item_map = {i: j for j, i in enumerate(item_list)}
+    if return_ratings:
+        mapped_interactions = [(user_id_map[u], item_id_map[i], r) for u, i, r in interactions]
+    else:
+        mapped_interactions = [(user_id_map[u], item_id_map[i]) for u, i in interactions]
 
-    bipartite_pairs = [(user_map[u], item_map[i] + len(user_map)) for u, i in interactions]
-    return bipartite_pairs, len(user_map), len(item_map)
+    num_users = len(user_id_map)
+    num_items = len(item_id_map)
+
+    return mapped_interactions, num_users, num_items
+
