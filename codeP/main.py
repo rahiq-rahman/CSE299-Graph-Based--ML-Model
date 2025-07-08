@@ -22,6 +22,8 @@ available_models = {
             "node_regression": gcn.train_node_regression,
             "edge_classification": gcn.train_edge_classification,
             "edge_regression": gcn.train_edge_regression,
+            "node_clustering": gcn.train_node_clustering,
+            "node_embedding": gcn.train_node_embedding
         }
     },
     "gat": {
@@ -32,6 +34,8 @@ available_models = {
             "node_regression": gat.train_node_regression,
             "edge_classification": gat.train_edge_classification,
             "edge_regression": gat.train_edge_regression,
+            "node_clustering": gat.train_node_clustering,
+            "node_embedding": gat.train_node_embedding
         }
     },
     "graphsage": {
@@ -42,6 +46,8 @@ available_models = {
             "node_regression": graphsage.train_node_regression,
             "edge_classification": graphsage.train_edge_classification,
             "edge_regression": graphsage.train_edge_regression,
+            "node_clustering": graphsage.train_node_clustering,
+            "node_embedding": graphsage.train_node_embedding
         }
     },
 }
@@ -53,6 +59,8 @@ tasks = {
     "3": {"name": "Node Regression", "function": "node_regression"},
     "4": {"name": "Edge Classification", "function": "edge_classification"},
     "5": {"name": "Edge Regression", "function": "edge_regression"},
+    "6": {"name": "Node Clustering", "function": "node_clustering"},
+    "7": {"name": "Node Embedding", "function": "node_embedding"}
 }
 
 # Task compatibility configuration
@@ -76,6 +84,14 @@ task_config = {
     "edge_regression": {
         "models": ["gcn", "gat", "graphsage"],
         "datasets": ["movielens_edge"]
+    },
+    "node_clustering": {
+        "models": ["gcn", "gat", "graphsage"],
+        "datasets": ["cora"]
+    },
+    "node_embedding": {
+        "models": ["gcn", "gat", "graphsage"],
+        "datasets": ["cora", "karate_regression"]
     }
 }
 
@@ -341,6 +357,33 @@ elif selected_task == "edge_regression":
             true_rating = edge_ratings[eid].item()
             pred_rating = pred[eid].item()
             print(f"Edge ({u}, {v}) → Predicted Rating: {pred_rating:.2f}, Actual: {true_rating:.2f}")
+
+
+elif selected_task == "node_embedding":
+    # Directly load features and edges without masks/labels
+    x = torch.load(os.path.join(training_path, "features.pt"))
+    edge_index = torch.load(os.path.join(training_path, "edge_index.pt"))
+
+    train_model_fn = available_models[model_key]["module"][selected_task]
+    model, embeddings = train_model_fn(x, edge_index)
+
+    print("\nNode Embedding (First 10 nodes):")
+    for i in range(min(10, embeddings.size(0))):
+        emb_str = ", ".join(f"{val:.4f}" for val in embeddings[i][:5])
+        print(f"Node {i}: [{emb_str}, ...]")  # showing only first 5 dims
+
+
+elif selected_task == "node_clustering":
+    x = torch.load(os.path.join(training_path, "features.pt"))
+    edge_index = torch.load(os.path.join(training_path, "edge_index.pt"))
+
+    train_model_fn = available_models[model_key]["module"][selected_task]
+    model, embeddings, cluster_labels = train_model_fn(x, edge_index)
+
+    print("\nNode Clustering Results (First 10 nodes):")
+    for i in range(min(10, len(cluster_labels))):
+        print(f"Node {i}: Cluster {cluster_labels[i]}")
+
 
 
 else:
