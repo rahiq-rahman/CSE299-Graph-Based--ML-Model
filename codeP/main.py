@@ -360,7 +360,6 @@ elif selected_task == "edge_regression":
 
 
 elif selected_task == "node_embedding":
-    # Directly load features and edges without masks/labels
     x = torch.load(os.path.join(training_path, "features.pt"))
     edge_index = torch.load(os.path.join(training_path, "edge_index.pt"))
 
@@ -370,7 +369,7 @@ elif selected_task == "node_embedding":
     print("\nNode Embedding (First 10 nodes):")
     for i in range(min(10, embeddings.size(0))):
         emb_str = ", ".join(f"{val:.4f}" for val in embeddings[i][:5])
-        print(f"Node {i}: [{emb_str}, ...]")  # showing only first 5 dims
+        print(f"Node {i}: [{emb_str}, ...]")
 
 
 elif selected_task == "node_clustering":

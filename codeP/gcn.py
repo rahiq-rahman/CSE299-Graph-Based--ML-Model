@@ -51,7 +51,7 @@ def recommend(model, x, edge_index, user_id, num_users, num_items, top_k=5):
         scores = []
         for item_id in item_ids:
             item_emb = F.normalize(embeddings[item_id], dim=0)
-            score = (user_emb * item_emb).sum().item()  # cosine similarity
+            score = (user_emb * item_emb).sum().item()
             scores.append((item_id, score))
 
         scores.sort(key=lambda x: x[1], reverse=True)
@@ -197,14 +197,14 @@ def train_node_embedding(x, edge_index, epochs=100):
         model.train()
         optimizer.zero_grad()
         out = model(x, edge_index)
-        loss = (out ** 2).mean()  # Simple L2 penalty to keep embeddings bounded
+        loss = (out ** 2).mean()
         loss.backward()
         optimizer.step()
 
         if epoch % 20 == 0:
             print(f"[GCN-NodeEmbed] Epoch {epoch} - Dummy Loss: {loss.item():.4f}")
 
-    return model, out.detach()  # return both model and final embeddings
+    return model, out.detach()
 
 
 def train_node_clustering(x, edge_index, num_clusters=7):

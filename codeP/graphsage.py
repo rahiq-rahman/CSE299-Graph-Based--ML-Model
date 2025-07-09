@@ -178,7 +178,7 @@ def train_node_embedding(x, edge_index, epochs=100):
         optimizer.step()
 
         if epoch % 20 == 0:
-            print(f"[SAGE-NodeEmbed] Epoch {epoch} - Dummy Loss: {loss.item():.4f}")
+            print(f"[SAGE-NodeEmbed] Epoch {epoch} - Loss: {loss.item():.4f}")
 
     return model, out.detach()
 
