@@ -2,15 +2,26 @@ import os
 import sys
 import argparse
 import torch
+from sklearn.metrics import roc_auc_score, average_precision_score
+from torch_geometric.utils import negative_sampling
+import matplotlib.pyplot as plt
+from sklearn.manifold import TSNE
+import numpy as np
 from load_movielens import load_movielens_from_udata
 from load_cora import load_cora
 from load_karate_regression import load_karate_regression
 from load_cora_edge import load_cora_edge
 from load_movielens_edge import load_movielens_edge
+from load_mutag import load_mutag
+from load_synthetic import load_synthetic_regression
+from load_graph_matching import load_graph_matching_pairs
+from load_cora_reconstruction import load_cora_reconstruction
+from load_graphgen import load_graph_generation_dataset
+
 
 sys.path.append(os.path.dirname(__file__))
 
-import gcn, gat, graphsage
+import gcn, gat, graphsage, siamese_gcn, gae, graphvae
 
 # Available Models
 available_models = {
@@ -23,7 +34,9 @@ available_models = {
             "edge_classification": gcn.train_edge_classification,
             "edge_regression": gcn.train_edge_regression,
             "node_clustering": gcn.train_node_clustering,
-            "node_embedding": gcn.train_node_embedding
+            "node_embedding": gcn.train_node_embedding,
+            "graph_classification": gcn.train_graph_classification,
+            "graph_regression": gcn.train_graph_regression,
         }
     },
     "gat": {
@@ -35,7 +48,9 @@ available_models = {
             "edge_classification": gat.train_edge_classification,
             "edge_regression": gat.train_edge_regression,
             "node_clustering": gat.train_node_clustering,
-            "node_embedding": gat.train_node_embedding
+            "node_embedding": gat.train_node_embedding,
+            "graph_classification": gat.train_graph_classification,
+            "graph_regression": gat.train_graph_regression,
         }
     },
     "graphsage": {
@@ -47,7 +62,27 @@ available_models = {
             "edge_classification": graphsage.train_edge_classification,
             "edge_regression": graphsage.train_edge_regression,
             "node_clustering": graphsage.train_node_clustering,
-            "node_embedding": graphsage.train_node_embedding
+            "node_embedding": graphsage.train_node_embedding,
+            "graph_classification": graphsage.train_graph_classification,
+            "graph_regression": graphsage.train_graph_regression,
+        }
+    },
+    "siamese_gcn": {
+        "name": "Siamese GCN",
+        "module": {
+            "graph_matching": siamese_gcn.train_graph_matching,
+        }
+    },
+    "gae": {
+        "name": "GAE",
+        "module": {
+            "graph_reconstruction": gae.train_graph_reconstruction
+        }
+    },
+    "graphvae": {
+        "name": "GraphVAE",
+        "module": {
+            "graph_generation": graphvae.train_graph_generation
         }
     },
 }
@@ -60,7 +95,12 @@ tasks = {
     "4": {"name": "Edge Classification", "function": "edge_classification"},
     "5": {"name": "Edge Regression", "function": "edge_regression"},
     "6": {"name": "Node Clustering", "function": "node_clustering"},
-    "7": {"name": "Node Embedding", "function": "node_embedding"}
+    "7": {"name": "Node Embedding", "function": "node_embedding"},
+    "8": {"name": "Graph Classification", "function": "graph_classification"},
+    "9": {"name": "Graph Regression", "function": "graph_regression"},
+    "10": {"name": "Graph Matching", "function": "graph_matching"},
+    "11": {"name": "Graph Reconstruction", "function": "graph_reconstruction"},
+    "12": {"name": "Graph Generation", "function": "graph_generation"},
 }
 
 # Task compatibility configuration
@@ -92,7 +132,27 @@ task_config = {
     "node_embedding": {
         "models": ["gcn", "gat", "graphsage"],
         "datasets": ["cora", "karate_regression"]
-    }
+    },
+    "graph_classification": {
+        "models": ["gcn", "gat", "graphsage"],
+        "datasets": ["mutag"]
+    },
+    "graph_regression": {
+        "models": ["gcn", "gat", "graphsage"],
+        "datasets": ["synthetic_regression"]
+    },
+    "graph_matching": {
+        "models": ["siamese_gcn"],
+        "datasets": ["graph_matching"]
+    },
+    "graph_reconstruction": {
+        "models": ["gae"],
+        "datasets": ["cora_reconstruction"]
+    },
+    "graph_generation": {
+        "models": ["graphvae"],
+        "datasets": ["graph_generation"]
+    },
 }
 
 # Parse Arguments
@@ -383,6 +443,155 @@ elif selected_task == "node_clustering":
     for i in range(min(10, len(cluster_labels))):
         print(f"Node {i}: Cluster {cluster_labels[i]}")
 
+elif selected_task == "graph_classification":
+    train_loader, test_loader, input_dim, num_classes = load_mutag(training_path, testing_path)
+    train_model_fn = available_models[model_key]["module"][selected_task]
+    model = train_model_fn(train_loader, test_loader, input_dim, num_classes)
+
+    model.eval()
+
+    test_graphs = list(test_loader)
+    total_graphs = len(test_graphs)
+
+    print(f"\nTotal test graphs available: {total_graphs}")
+
+    while True:
+        user_input = input(f"\nEnter graph ID (0 to {total_graphs - 1}) to classify, or 'q' to quit: ").strip()
+        if user_input.lower() == 'q':
+            break
+        if not user_input.isdigit():
+            print("Invalid input. Please enter a valid graph ID.")
+            continue
+
+        graph_id = int(user_input)
+        if graph_id < 0 or graph_id >= total_graphs:
+            print(f"Graph ID out of range. Choose between 0 and {total_graphs - 1}.")
+            continue
+
+        batch = test_graphs[graph_id]
+        print(f"\nGraph #{graph_id}")
+        print(f"Number of Nodes: {batch.num_nodes}")
+        print(f"Number of Edges: {batch.num_edges}")
+
+        with torch.no_grad():
+            out = model(batch.x, batch.edge_index, batch.batch)
+            pred = out.argmax(dim=1).item()
+            true_label = batch.y.item()
+
+            print(f"→ Predicted Label: {pred} | True Label: {true_label}")
+
+elif selected_task == "graph_regression":
+    train_loader, test_loader, input_dim = load_synthetic_regression(training_path, testing_path)
+    train_model_fn = available_models[model_key]["module"][selected_task]
+    model = train_model_fn(train_loader, test_loader, input_dim)
+
+    model.eval()
+    test_graphs = list(test_loader)
+
+    print(f"\nTotal graphs available for regression: {len(test_graphs)}")
+    
+    while True:
+        choice = input(f"\nEnter graph ID to predict (0 to {len(test_graphs)-1}, or 'q' to quit): ").strip().lower()
+        
+        if choice == 'q':
+            break
+        if not choice.isdigit() or not (0 <= int(choice) < len(test_graphs)):
+            print("Invalid choice. Please enter a valid graph ID.")
+            continue
+        
+        graph_id = int(choice)
+        graph = test_graphs[graph_id]
+        print(f"\nGraph ID: {graph_id}")
+        print(f"Number of Nodes: {graph.num_nodes}")
+        print(f"Number of Edges: {graph.num_edges}")
+
+        with torch.no_grad():
+            out = model(graph.x, graph.edge_index, torch.zeros(graph.num_nodes, dtype=torch.long))
+            prediction = out.item() if out.numel() == 1 else out.squeeze().item()
+            print(f"→ Predicted Value: {prediction:.4f}")
+            print(f"→ True Value     : {graph.y.item():.4f}")
+
+elif selected_task == "graph_matching":
+    train_pairs = load_graph_matching_pairs(training_path)
+    test_pairs = load_graph_matching_pairs(testing_path)
+
+    model = train_model_fn(train_pairs, test_pairs)
+
+    while True:
+        idx = input(f"\nEnter pair index to test (0 to {len(test_pairs)-1}) or 'q' to quit: ")
+        if idx.lower() == 'q':
+            break
+        if not idx.isdigit() or int(idx) < 0 or int(idx) >= len(test_pairs):
+            print("Invalid index.")
+            continue
+
+        g1, g2, true_label = test_pairs[int(idx)]
+        pred = model.predict(g1, g2)
+        print(f"Predicted: {pred}, Actual: {true_label.item()}")
+
+
+elif selected_task == "graph_reconstruction":
+    def evaluate_reconstruction(z, pos_edge_index, neg_edge_index):
+        def sigmoid(x):
+            return 1 / (1 + torch.exp(-x))
+
+        pos_scores = (z[pos_edge_index[0]] * z[pos_edge_index[1]]).sum(dim=1)
+        neg_scores = (z[neg_edge_index[0]] * z[neg_edge_index[1]]).sum(dim=1)
+
+        scores = torch.cat([pos_scores, neg_scores])
+        labels = torch.cat([torch.ones(pos_scores.size(0)), torch.zeros(neg_scores.size(0))])
+
+        scores = sigmoid(scores).numpy()
+        labels = labels.numpy()
+
+        auc = roc_auc_score(labels, scores)
+        ap = average_precision_score(labels, scores)
+        return auc, ap
+
+    def plot_embeddings(z, title="Node Embeddings"):
+        z = z.numpy()
+        z_2d = TSNE(n_components=2).fit_transform(z)
+
+        plt.figure(figsize=(8, 6))
+        plt.scatter(z_2d[:, 0], z_2d[:, 1], s=30, cmap="coolwarm", alpha=0.7)
+        plt.title(title)
+        plt.xlabel("t-SNE 1")
+        plt.ylabel("t-SNE 2")
+        plt.grid(True)
+        plt.show()
+
+    training_dir = os.path.join(data_root, dataset_name, "training")
+    testing_dir = os.path.join(data_root, dataset_name, "testing")
+
+    x, train_edge_index, test_edge_index = load_cora_reconstruction(training_dir, testing_dir)
+    model, z = train_model_fn(x, train_edge_index, test_edge_index)
+
+    neg_test_edges = negative_sampling(
+        edge_index=train_edge_index,
+        num_nodes=x.size(0),
+        num_neg_samples=test_edge_index.size(1)
+    )
+
+    auc, ap = evaluate_reconstruction(z, test_edge_index, neg_test_edges)
+
+    print("\n Reconstruction Evaluation Results:")
+    print(f"   AUC: {auc:.4f}")
+    print(f"   Average Precision: {ap:.4f}")
+
+    plot_embeddings(z, title="t-SNE of Node Embeddings (GAE)")
+
+
+elif selected_task == "graph_generation":
+    graphs = load_graph_generation_dataset(training_path)
+
+    model = train_model_fn(graphs)
+
+    print("\nGenerating new graphs...")
+    generated_graphs = model.generate(num_graphs=5)
+
+    for i, g in enumerate(generated_graphs):
+        print(f"\nGenerated Graph {i+1}:")
+        print(f"Num Nodes: {g.num_nodes}, Num Edges: {g.num_edges}")
 
 
 else:
