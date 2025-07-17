@@ -4,9 +4,9 @@ import argparse
 import torch
 from sklearn.metrics import roc_auc_score, average_precision_score
 from torch_geometric.utils import negative_sampling
-import matplotlib.pyplot as plt
-from sklearn.manifold import TSNE
-import numpy as np
+import random
+
+# Loaders
 from load_movielens import load_movielens_from_udata
 from load_cora import load_cora
 from load_karate_regression import load_karate_regression
@@ -18,12 +18,9 @@ from load_graph_matching import load_graph_matching_pairs
 from load_cora_reconstruction import load_cora_reconstruction
 from load_graphgen import load_graph_generation_dataset
 
-
-sys.path.append(os.path.dirname(__file__))
-
+# Models
 import gcn, gat, graphsage, siamese_gcn, gae, graphvae
 
-# Available Models
 available_models = {
     "gcn": {
         "name": "GCN",
@@ -87,512 +84,231 @@ available_models = {
     },
 }
 
-# Implemented Graph Tasks
-tasks = {
-    "1": {"name": "Link Prediction", "function": "link_prediction"},
-    "2": {"name": "Node Classification", "function": "node_classification"},
-    "3": {"name": "Node Regression", "function": "node_regression"},
-    "4": {"name": "Edge Classification", "function": "edge_classification"},
-    "5": {"name": "Edge Regression", "function": "edge_regression"},
-    "6": {"name": "Node Clustering", "function": "node_clustering"},
-    "7": {"name": "Node Embedding", "function": "node_embedding"},
-    "8": {"name": "Graph Classification", "function": "graph_classification"},
-    "9": {"name": "Graph Regression", "function": "graph_regression"},
-    "10": {"name": "Graph Matching", "function": "graph_matching"},
-    "11": {"name": "Graph Reconstruction", "function": "graph_reconstruction"},
-    "12": {"name": "Graph Generation", "function": "graph_generation"},
+valid_datasets = {
+    "node_classification": ["cora"],
+    "node_regression": ["karate_regression"],
+    "link_prediction": ["movielens"],
+    "edge_classification": ["cora_edge"],
+    "edge_regression": ["movielens_edge"],
+    "node_clustering": ["cora"],
+    "node_embedding": ["cora"],
+    "graph_classification": ["mutag"],
+    "graph_regression": ["synthetic_regression"],
+    "graph_matching": ["graph_matching"],
+    "graph_reconstruction": ["cora_reconstruction"],
+    "graph_generation": ["graph_generation"],
 }
 
-# Task compatibility configuration
-task_config = {
-    "link_prediction": {
-        "models": ["gcn", "gat", "graphsage"],
-        "datasets": ["movielens"]
-    },
-    "node_classification": {
-        "models": ["gcn", "gat", "graphsage"],
-        "datasets": ["cora"]
-    },
-    "node_regression": {
-        "models": ["gcn", "gat", "graphsage"],
-        "datasets": ["karate_regression"]
-    },
-    "edge_classification": {
-        "models": ["gcn", "gat", "graphsage"],
-        "datasets": ["cora_edge"]
-    },
-    "edge_regression": {
-        "models": ["gcn", "gat", "graphsage"],
-        "datasets": ["movielens_edge"]
-    },
-    "node_clustering": {
-        "models": ["gcn", "gat", "graphsage"],
-        "datasets": ["cora"]
-    },
-    "node_embedding": {
-        "models": ["gcn", "gat", "graphsage"],
-        "datasets": ["cora", "karate_regression"]
-    },
-    "graph_classification": {
-        "models": ["gcn", "gat", "graphsage"],
-        "datasets": ["mutag"]
-    },
-    "graph_regression": {
-        "models": ["gcn", "gat", "graphsage"],
-        "datasets": ["synthetic_regression"]
-    },
-    "graph_matching": {
-        "models": ["siamese_gcn"],
-        "datasets": ["graph_matching"]
-    },
-    "graph_reconstruction": {
-        "models": ["gae"],
-        "datasets": ["cora_reconstruction"]
-    },
-    "graph_generation": {
-        "models": ["graphvae"],
-        "datasets": ["graph_generation"]
-    },
-}
-
-# Parse Arguments
 parser = argparse.ArgumentParser()
-parser.add_argument('--model', required=False, type=str, help='Model name (e.g., gcn, gat)')
-parser.add_argument('--dataset', required=False, type=str, help='Dataset folder name inside /data')
+parser.add_argument('--model', required=True)
+parser.add_argument('--dataset', required=True)
+parser.add_argument('--task', required=True)
 args = parser.parse_args()
 
+model_key = args.model.lower()
+dataset_key = args.dataset.lower()
+selected_task = args.task.lower()
+
+if model_key not in available_models:
+    print(f"Invalid model: {model_key}")
+    sys.exit(1)
+
+if selected_task not in available_models[model_key]["module"]:
+    print(f"Task '{selected_task}' not supported by model '{model_key}'")
+    sys.exit(1)
+
+if selected_task not in valid_datasets or dataset_key not in valid_datasets[selected_task]:
+    print(f"Dataset '{dataset_key}' is not compatible with task '{selected_task}'")
+    sys.exit(1)
+
+# Paths
 data_root = os.path.join(os.path.dirname(__file__), "..", "data")
-
-model_key = args.model.lower() if args.model else None
-dataset_key = args.dataset.lower() if args.dataset else None
-
-def get_compatible_tasks(model_key, dataset_key):
-    compatible = {}
-    for task_key, config in task_config.items():
-        if model_key in config["models"] and dataset_key in config["datasets"]:
-            for task_id, task in tasks.items():
-                if task["function"] == task_key:
-                    compatible[task_id] = task
-                    break
-    return compatible
-
-# Task Selection
-if model_key and dataset_key:
-    if model_key not in available_models:
-        print(f"Model '{model_key}' not found.")
-        exit()
-
-    dataset_path = os.path.join(data_root, dataset_key)
-    if not os.path.isdir(dataset_path):
-        print(f"Dataset '{dataset_key}' not found in /data folder.")
-        exit()
-
-    compatible_tasks = get_compatible_tasks(model_key, dataset_key)
-
-    if not compatible_tasks:
-        print(f"No compatible tasks found for model '{model_key}' and dataset '{dataset_key}'. Exiting.")
-        exit()
-
-    print("\nCompatible Tasks for provided model and dataset:")
-    for key, task in compatible_tasks.items():
-        print(f"{key}. {task['name']}")
-
-    task_choice = input("\nSelect a task by number (e.g., 1): ").strip()
-    if task_choice not in compatible_tasks:
-        print("Invalid task. Exiting.")
-        exit()
-
-    selected_task = compatible_tasks[task_choice]["function"]
-else:
-    print("Available Graph-Based Tasks:")
-    for key, task in tasks.items():
-        print(f"{key}. {task['name']}")
-
-    task_choice = input("\nSelect a task by number (e.g., 1): ").strip()
-    if task_choice not in tasks:
-        print("Invalid task. Exiting.")
-        exit()
-    selected_task = tasks[task_choice]["function"]
-
-    compatible_models = task_config[selected_task]["models"]
-    compatible_datasets = task_config[selected_task]["datasets"]
-
-    # Prompt for model
-    while model_key not in compatible_models:
-        if model_key is not None:
-            print(f"Model '{model_key}' is not compatible with task '{selected_task}'.")
-        print("Compatible Models:", ", ".join(compatible_models))
-        model_key = input("Enter a valid model name: ").strip().lower()
-
-    # Prompt for dataset
-    while dataset_key not in compatible_datasets:
-        if dataset_key is not None:
-            print(f"Dataset '{dataset_key}' is not compatible with task '{selected_task}'.")
-        print("Compatible Datasets:", ", ".join(compatible_datasets))
-        dataset_key = input("Enter a valid dataset name: ").strip()
-
-# Final validation & setup
-model_name = available_models[model_key]["name"]
-train_model_fn = available_models[model_key]["module"][selected_task]
-dataset_name = dataset_key
-dataset_path = os.path.join(data_root, dataset_name)
+dataset_path = os.path.join(data_root, dataset_key)
 training_path = os.path.join(dataset_path, "training")
 testing_path = os.path.join(dataset_path, "testing")
 
-# Final Info Display
-print(f"\nSelected Task: {tasks[task_choice]['name']}")
-print(f"Selected Model: {model_name}")
-print(f"Selected Dataset: {dataset_name}\n")
+train_model_fn = available_models[model_key]["module"][selected_task]
 
-# Perform Task
-if selected_task == "link_prediction":
+
+# Tasks
+if selected_task == "node_classification":
+    x, edge_index, labels, train_mask, test_mask = load_cora(training_path, testing_path)
+    model = train_model_fn(x, edge_index, labels, train_mask, test_mask)
+    model.eval()
+    preds = model(x, edge_index).argmax(dim=1)
+    print("\nSample Node Predictions:")
+    for nid in random.sample(range(len(preds)), 3):
+        print(f"Node {nid} → Predicted Class: {preds[nid].item()}")
+
+elif selected_task == "node_regression":
+    x, edge_index, targets, train_mask, test_mask = load_karate_regression(training_path, testing_path)
+    model = train_model_fn(x, edge_index, targets, train_mask, test_mask)
+    model.eval()
+    out = model(x, edge_index).squeeze()
+    print("\nSample Node Regression Results:")
+    for nid in random.sample(range(len(out)), 3):
+        print(f"Node {nid} → Predicted: {out[nid].item():.4f} | Actual: {targets[nid].item():.4f}")
+
+elif selected_task == "link_prediction":
     train_file = os.path.join(training_path, "u.data")
-    test_file = os.path.join(testing_path, "u.data")
-
     interactions, num_users, num_items = load_movielens_from_udata(train_file)
-    if not interactions:
-        print("No training interactions found. Exiting.")
-        exit()
-
-    model, x, edge_index, num_users, num_items = train_model_fn(
-        num_users=num_users,
-        num_items=num_items,
-        interactions=interactions
-    )
-
-    while True:
-        user_input = input(f"\nEnter user ID (0 to {num_users - 1}) for recommendations, or 'q' to quit: ")
-        if user_input.lower() == 'q':
-            break
-        if not user_input.isdigit():
-            print("Invalid input.")
-            continue
-        user_id = int(user_input)
-        if user_id < 0 or user_id >= num_users:
-            print("User ID out of range.")
-            continue
+    model, x, edge_index, num_users, num_items = train_model_fn(num_users, num_items, interactions)
+    print("\nSample Link Predictions:")
+    for _ in range(3):
+        user_id = random.randint(0, num_users - 1)
         recs = gcn.recommend(model, x, edge_index, user_id, num_users, num_items, top_k=5)
         print(f"\nTop recommendations for user {user_id}:")
         for rank, (item_id, score) in enumerate(recs, start=1):
-            print(f"{rank}. Item {item_id} -> Score: {score:.4f}")
-
-elif selected_task == "node_classification":
-    training_dir = os.path.join(data_root, dataset_name, "training")
-    testing_dir = os.path.join(data_root, dataset_name, "testing")
-    x, edge_index, labels, train_mask, test_mask = load_cora(training_dir, testing_dir)
-
-    train_model_fn = available_models[model_key]["module"][selected_task]
-    model = train_model_fn(x, edge_index, labels, train_mask, test_mask)
-
-    model.eval()
-    out = model(x, edge_index)
-    preds = out.argmax(dim=1)
-
-    while True:
-        user_input = input(f"\nEnter a node ID (0 to {x.size(0)-1}) to predict its label (or 'q' to quit): ").strip()
-        if user_input.lower() == 'q':
-            break
-        if not user_input.isdigit():
-            print("Invalid input. Enter a valid node ID.")
-            continue
-
-        node_id = int(user_input)
-        if node_id < 0 or node_id >= x.size(0):
-            print(f"Node ID out of range (0 to {x.size(0)-1})")
-            continue
-
-        predicted_label = preds[node_id].item()
-        print(f"Node {node_id} is predicted to belong to class: {predicted_label}")
-
-        # show similar nodes
-        distances = (out - out[node_id]).norm(dim=1)
-        similar_nodes = distances.argsort()[1:6]
-        print("Top 5 most similar nodes (by embedding distance):")
-        for i, nid in enumerate(similar_nodes.tolist(), start=1):
-            print(f"{i}. Node {nid} - Predicted Class: {preds[nid].item()} - Distance: {distances[nid].item():.4f}")
-
-elif selected_task == "node_regression":
-    train_path = os.path.join(data_root, dataset_name, "training")
-    test_path = os.path.join(data_root, dataset_name, "testing")
-
-    x, edge_index, targets, train_mask, test_mask = load_karate_regression(train_path, test_path)
-    train_model_fn = available_models[model_key]["module"][selected_task]
-    model = train_model_fn(x, edge_index, targets, train_mask, test_mask)
-
-    model.eval()
-    out = model(x, edge_index).squeeze()
-
-    while True:
-        user_input = input(f"\nEnter a node ID (0 to {x.size(0)-1}) to predict its value (or 'q' to quit): ").strip()
-        if user_input.lower() == 'q':
-            break
-        if not user_input.isdigit():
-            print("Invalid input. Enter a valid node ID.")
-            continue
-
-        node_id = int(user_input)
-        if node_id < 0 or node_id >= x.size(0):
-            print(f"Node ID out of range (0 to {x.size(0)-1})")
-            continue
-
-        pred_value = out[node_id].item()
-        actual_value = targets[node_id].item()
-        print(f"Node {node_id} prediction: {pred_value:.4f} | Actual: {actual_value:.4f}")
-
-        # show similar nodes based on embedding distance
-        distances = (out - out[node_id]).abs()
-        similar_nodes = distances.argsort()[1:6]
-        print("\nTop 5 most similar nodes:")
-        for i, nid in enumerate(similar_nodes.tolist(), start=1):
-            print(f"{i}. Node {nid} - Predicted: {out[nid].item():.4f} | Actual: {targets[nid].item():.4f} | Difference: {abs(out[nid].item() - pred_value):.4f}")
-
+            print(f"{rank}. Item {item_id} → Score: {score:.4f}")
 
 elif selected_task == "edge_classification":
-    train_path = os.path.join(data_root, dataset_name, "training")
-    test_path = os.path.join(data_root, dataset_name, "testing")
-
-    x, edge_index, edge_labels, train_mask, test_mask = load_cora_edge(train_path, test_path)
-    train_model_fn = available_models[model_key]["module"][selected_task]
+    x, edge_index, edge_labels, train_mask, test_mask = load_cora_edge(training_path, testing_path)
     model, classifier = train_model_fn(x, edge_index, edge_labels, train_mask, test_mask)
-
     model.eval()
     classifier.eval()
-
-    with torch.no_grad():
-        node_embeddings = model(x, edge_index)
-        src = edge_index[0]
-        dst = edge_index[1]
-        edge_emb = node_embeddings[src] * node_embeddings[dst]
-        edge_logits = classifier(edge_emb)
-        probs = torch.softmax(edge_logits, dim=1)
-
-        while True:
-            edge_id_input = input(f"\nEnter edge index (0 to {edge_index.size(1)-1}) for prediction (or 'q' to quit): ").strip()
-            if edge_id_input.lower() == 'q':
-                break
-            if not edge_id_input.isdigit():
-                print("Invalid input.")
-                continue
-
-            eid = int(edge_id_input)
-            if eid < 0 or eid >= edge_index.size(1):
-                print("Out of range.")
-                continue
-
-            prob = probs[eid]
-            pred_label = torch.argmax(prob).item()
-            true_label = edge_labels[eid].item()
-            print(f"Edge ({edge_index[0,eid].item()}, {edge_index[1,eid].item()}) → Predicted: {pred_label}, True: {true_label}, Confidence: {prob[pred_label]:.4f}")
-
+    node_embeddings = model(x, edge_index)
+    edge_emb = node_embeddings[edge_index[0]] * node_embeddings[edge_index[1]]
+    edge_logits = classifier(edge_emb)
+    probs = torch.softmax(edge_logits, dim=1)
+    print("\nSample Edge Classifications:")
+    for _ in range(3):
+        eid = random.randint(0, edge_index.shape[1] - 1)
+        prob = probs[eid]
+        print(f"Edge ({edge_index[0,eid].item()}, {edge_index[1,eid].item()}) → "
+              f"Pred: {prob.argmax().item()} | True: {edge_labels[eid].item()} | "
+              f"Confidence: {prob.max().item():.4f}")
 
 elif selected_task == "edge_regression":
-    x, edge_index, edge_ratings, train_mask, test_mask = load_movielens_edge(
-        training_path, testing_path
-    )
-
-    train_model_fn = available_models[model_key]["module"][selected_task]
+    x, edge_index, edge_ratings, train_mask, test_mask = load_movielens_edge(training_path, testing_path)
     model, regressor = train_model_fn(x, edge_index, edge_ratings, train_mask, test_mask)
-
     model.eval()
     regressor.eval()
-    with torch.no_grad():
-        node_embeddings = model(x, edge_index)
-        edge_emb = node_embeddings[edge_index[0]] * node_embeddings[edge_index[1]]
-        pred = regressor(edge_emb).squeeze()
-
-        while True:
-            edge_id = input(f"\nEnter edge index (0 to {edge_index.size(1)-1}) for predicted rating (or 'q' to quit): ")
-            if edge_id.lower() == 'q':
-                break
-            if not edge_id.isdigit():
-                print("Invalid input.")
-                continue
-            eid = int(edge_id)
-            if eid < 0 or eid >= edge_index.size(1):
-                print("Out of range.")
-                continue
-
-            u = edge_index[0, eid].item()
-            v = edge_index[1, eid].item()
-            true_rating = edge_ratings[eid].item()
-            pred_rating = pred[eid].item()
-            print(f"Edge ({u}, {v}) → Predicted Rating: {pred_rating:.2f}, Actual: {true_rating:.2f}")
-
-
-elif selected_task == "node_embedding":
-    x = torch.load(os.path.join(training_path, "features.pt"))
-    edge_index = torch.load(os.path.join(training_path, "edge_index.pt"))
-
-    train_model_fn = available_models[model_key]["module"][selected_task]
-    model, embeddings = train_model_fn(x, edge_index)
-
-    print("\nNode Embedding (First 10 nodes):")
-    for i in range(min(10, embeddings.size(0))):
-        emb_str = ", ".join(f"{val:.4f}" for val in embeddings[i][:5])
-        print(f"Node {i}: [{emb_str}, ...]")
-
+    node_embeddings = model(x, edge_index)
+    edge_emb = node_embeddings[edge_index[0]] * node_embeddings[edge_index[1]]
+    preds = regressor(edge_emb).squeeze()
+    print("\nSample Edge Regression Results:")
+    for _ in range(3):
+        eid = random.randint(0, edge_index.size(1) - 1)
+        u, v = edge_index[0, eid].item(), edge_index[1, eid].item()
+        print(f"Edge ({u}, {v}) → Predicted: {preds[eid]:.2f} | Actual: {edge_ratings[eid]:.2f}")
 
 elif selected_task == "node_clustering":
     x = torch.load(os.path.join(training_path, "features.pt"))
     edge_index = torch.load(os.path.join(training_path, "edge_index.pt"))
-
-    train_model_fn = available_models[model_key]["module"][selected_task]
     model, embeddings, cluster_labels = train_model_fn(x, edge_index)
+    print("\nSample Node Clusters:")
+    for nid in random.sample(range(len(cluster_labels)), 3):
+        print(f"Node {nid} → Cluster {cluster_labels[nid]}")
 
-    print("\nNode Clustering Results (First 10 nodes):")
-    for i in range(min(10, len(cluster_labels))):
-        print(f"Node {i}: Cluster {cluster_labels[i]}")
+elif selected_task == "node_embedding":
+    x = torch.load(os.path.join(training_path, "features.pt"))
+    edge_index = torch.load(os.path.join(training_path, "edge_index.pt"))
+    model, embeddings = train_model_fn(x, edge_index)
+    print("\nSample Node Embeddings:")
+    for nid in range(min(3, embeddings.size(0))):
+        emb_str = ", ".join(f"{v:.4f}" for v in embeddings[nid][:5])
+        print(f"Node {nid} → Embedding: [{emb_str}, ...]")
 
 elif selected_task == "graph_classification":
     train_loader, test_loader, input_dim, num_classes = load_mutag(training_path, testing_path)
-    train_model_fn = available_models[model_key]["module"][selected_task]
     model = train_model_fn(train_loader, test_loader, input_dim, num_classes)
-
-    model.eval()
-
     test_graphs = list(test_loader)
-    total_graphs = len(test_graphs)
-
-    print(f"\nTotal test graphs available: {total_graphs}")
-
-    while True:
-        user_input = input(f"\nEnter graph ID (0 to {total_graphs - 1}) to classify, or 'q' to quit: ").strip()
-        if user_input.lower() == 'q':
-            break
-        if not user_input.isdigit():
-            print("Invalid input. Please enter a valid graph ID.")
-            continue
-
-        graph_id = int(user_input)
-        if graph_id < 0 or graph_id >= total_graphs:
-            print(f"Graph ID out of range. Choose between 0 and {total_graphs - 1}.")
-            continue
-
-        batch = test_graphs[graph_id]
-        print(f"\nGraph #{graph_id}")
-        print(f"Number of Nodes: {batch.num_nodes}")
-        print(f"Number of Edges: {batch.num_edges}")
-
+    print("\nSample Graph Classification:")
+    sample_indices = random.sample(range(len(test_graphs)), 3)
+    for idx in sample_indices:
+        graph = test_graphs[idx]
         with torch.no_grad():
-            out = model(batch.x, batch.edge_index, batch.batch)
+            out = model(graph.x, graph.edge_index, graph.batch)
             pred = out.argmax(dim=1).item()
-            true_label = batch.y.item()
-
-            print(f"→ Predicted Label: {pred} | True Label: {true_label}")
+        print(f"Graph {idx} → Predicted: {pred} | True: {graph.y.item()}")
 
 elif selected_task == "graph_regression":
     train_loader, test_loader, input_dim = load_synthetic_regression(training_path, testing_path)
-    train_model_fn = available_models[model_key]["module"][selected_task]
     model = train_model_fn(train_loader, test_loader, input_dim)
-
-    model.eval()
     test_graphs = list(test_loader)
-
-    print(f"\nTotal graphs available for regression: {len(test_graphs)}")
-    
-    while True:
-        choice = input(f"\nEnter graph ID to predict (0 to {len(test_graphs)-1}, or 'q' to quit): ").strip().lower()
-        
-        if choice == 'q':
-            break
-        if not choice.isdigit() or not (0 <= int(choice) < len(test_graphs)):
-            print("Invalid choice. Please enter a valid graph ID.")
-            continue
-        
-        graph_id = int(choice)
-        graph = test_graphs[graph_id]
-        print(f"\nGraph ID: {graph_id}")
-        print(f"Number of Nodes: {graph.num_nodes}")
-        print(f"Number of Edges: {graph.num_edges}")
-
+    print("\nSample Graph Regression:")
+    sample_indices = random.sample(range(len(test_graphs)), 3)
+    for idx in sample_indices:
+        graph = test_graphs[idx]
         with torch.no_grad():
             out = model(graph.x, graph.edge_index, torch.zeros(graph.num_nodes, dtype=torch.long))
-            prediction = out.item() if out.numel() == 1 else out.squeeze().item()
-            print(f"→ Predicted Value: {prediction:.4f}")
-            print(f"→ True Value     : {graph.y.item():.4f}")
+            pred = out.item() if out.numel() == 1 else out.squeeze().item()
+        print(f"Graph {idx} → Predicted: {pred:.4f} | True: {graph.y.item():.4f}")
 
 elif selected_task == "graph_matching":
     train_pairs = load_graph_matching_pairs(training_path)
     test_pairs = load_graph_matching_pairs(testing_path)
-
     model = train_model_fn(train_pairs, test_pairs)
-
-    while True:
-        idx = input(f"\nEnter pair index to test (0 to {len(test_pairs)-1}) or 'q' to quit: ")
-        if idx.lower() == 'q':
-            break
-        if not idx.isdigit() or int(idx) < 0 or int(idx) >= len(test_pairs):
-            print("Invalid index.")
-            continue
-
-        g1, g2, true_label = test_pairs[int(idx)]
+    print("\nSample Graph Matching Results:")
+    for i in random.sample(range(len(test_pairs)), 3):
+        g1, g2, label = test_pairs[i]
         pred = model.predict(g1, g2)
-        print(f"Predicted: {pred}, Actual: {true_label.item()}")
-
+        print(f"Pair {i} → Predicted: {pred} | True: {label.item()}")
 
 elif selected_task == "graph_reconstruction":
-    def evaluate_reconstruction(z, pos_edge_index, neg_edge_index):
-        def sigmoid(x):
-            return 1 / (1 + torch.exp(-x))
+    import networkx as nx
+    import matplotlib.pyplot as plt
 
-        pos_scores = (z[pos_edge_index[0]] * z[pos_edge_index[1]]).sum(dim=1)
-        neg_scores = (z[neg_edge_index[0]] * z[neg_edge_index[1]]).sum(dim=1)
-
-        scores = torch.cat([pos_scores, neg_scores])
-        labels = torch.cat([torch.ones(pos_scores.size(0)), torch.zeros(neg_scores.size(0))])
-
-        scores = sigmoid(scores).numpy()
-        labels = labels.numpy()
-
-        auc = roc_auc_score(labels, scores)
-        ap = average_precision_score(labels, scores)
-        return auc, ap
-
-    def plot_embeddings(z, title="Node Embeddings"):
-        z = z.numpy()
-        z_2d = TSNE(n_components=2).fit_transform(z)
-
-        plt.figure(figsize=(8, 6))
-        plt.scatter(z_2d[:, 0], z_2d[:, 1], s=30, cmap="coolwarm", alpha=0.7)
-        plt.title(title)
-        plt.xlabel("t-SNE 1")
-        plt.ylabel("t-SNE 2")
-        plt.grid(True)
-        plt.show()
-
-    training_dir = os.path.join(data_root, dataset_name, "training")
-    testing_dir = os.path.join(data_root, dataset_name, "testing")
-
-    x, train_edge_index, test_edge_index = load_cora_reconstruction(training_dir, testing_dir)
+    x, train_edge_index, test_edge_index = load_cora_reconstruction(training_path, testing_path)
     model, z = train_model_fn(x, train_edge_index, test_edge_index)
+    neg_test_edges = negative_sampling(edge_index=train_edge_index, num_nodes=x.size(0), num_neg_samples=test_edge_index.size(1))
 
-    neg_test_edges = negative_sampling(
-        edge_index=train_edge_index,
-        num_nodes=x.size(0),
-        num_neg_samples=test_edge_index.size(1)
-    )
+    def sigmoid(x): return 1 / (1 + torch.exp(-x))
 
-    auc, ap = evaluate_reconstruction(z, test_edge_index, neg_test_edges)
+    pos_scores = (z[test_edge_index[0]] * z[test_edge_index[1]]).sum(dim=1)
+    neg_scores = (z[neg_test_edges[0]] * z[neg_test_edges[1]]).sum(dim=1)
+    scores = torch.cat([pos_scores, neg_scores])
+    labels = torch.cat([torch.ones(pos_scores.size(0)), torch.zeros(neg_scores.size(0))])
+    scores = sigmoid(scores).numpy()
+    labels = labels.numpy()
 
-    print("\n Reconstruction Evaluation Results:")
-    print(f"   AUC: {auc:.4f}")
-    print(f"   Average Precision: {ap:.4f}")
+    auc = roc_auc_score(labels, scores)
+    ap = average_precision_score(labels, scores)
+    print("\nGraph Reconstruction Results:")
+    print(f"AUC: {auc:.4f} | Average Precision: {ap:.4f}")
 
-    plot_embeddings(z, title="t-SNE of Node Embeddings (GAE)")
+    print("\nVisualizing Reconstructed Edges (Green = True Pos, Red = False Pos)...")
 
+    G = nx.Graph()
+    G.add_nodes_from(range(x.size(0)))
+
+    topk = 5
+    edge_scores = list(zip(test_edge_index[0].tolist(), test_edge_index[1].tolist(), pos_scores.tolist()))
+    edge_scores.sort(key=lambda x: -x[2])
+
+    plt.figure(figsize=(8, 6))
+    pos = nx.spring_layout(G, seed=42)
+
+    nx.draw_networkx_nodes(G, pos, node_color='lightblue', node_size=300)
+
+    train_edges = list(zip(train_edge_index[0].tolist(), train_edge_index[1].tolist()))
+    nx.draw_networkx_edges(G, pos, edgelist=train_edges, edge_color='lightgray', width=0.5, alpha=0.5)
+
+    for i in range(topk):
+        u, v, score = edge_scores[i]
+        G.add_edge(u, v)
+        nx.draw_networkx_edges(G, pos, edgelist=[(u, v)], edge_color='green', width=2.0, label="Reconstructed Edge")
+
+    neg_edge_scores = list(zip(neg_test_edges[0].tolist(), neg_test_edges[1].tolist(), neg_scores.tolist()))
+    neg_edge_scores.sort(key=lambda x: -x[2])
+    for i in range(topk):
+        u, v, score = neg_edge_scores[i]
+        G.add_edge(u, v)
+        nx.draw_networkx_edges(G, pos, edgelist=[(u, v)], edge_color='red', width=2.0, style='dashed')
+
+    nx.draw_networkx_labels(G, pos, font_size=8)
+    plt.title("Top Reconstructed Edges (Green=True Positives, Red=False Positives)")
+    plt.axis('off')
+    plt.tight_layout()
+    plt.show()
 
 elif selected_task == "graph_generation":
     graphs = load_graph_generation_dataset(training_path)
-
     model = train_model_fn(graphs)
-
-    print("\nGenerating new graphs...")
-    generated_graphs = model.generate(num_graphs=5)
-
+    generated_graphs = model.generate(num_graphs=3)
+    print("\nGenerated Graphs:")
     for i, g in enumerate(generated_graphs):
-        print(f"\nGenerated Graph {i+1}:")
-        print(f"Num Nodes: {g.num_nodes}, Num Edges: {g.num_edges}")
-
+        print(f"Graph {i+1} → Nodes: {g.num_nodes} | Edges: {g.num_edges}")
 
 else:
-    print("Task not implemented yet.")
+    print("Task not implemented.")
