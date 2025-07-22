@@ -2,6 +2,7 @@ import torch
 import torch.nn.functional as F
 from torch_geometric.utils import to_dense_adj
 from graphvae import GraphVAE
+from graphrnn import GraphRNN
 
 def graph_generation_graphvae(graphs, epochs=100, lr=0.01):
     in_channels = graphs[0].x.size(1)
@@ -28,5 +29,24 @@ def graph_generation_graphvae(graphs, epochs=100, lr=0.01):
 
         if epoch % 10 == 0 or epoch == epochs - 1:
             print(f"Epoch {epoch+1}/{epochs} - Loss: {total_loss:.4f}")
+
+    return model
+
+def graph_generation_graphrnn(graphs, epochs=40, lr=0.001):
+    model = GraphRNN()
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+
+    model.train()
+    for epoch in range(epochs):
+        total_loss = 0
+        for data in graphs:
+            optimizer.zero_grad()
+            loss = model(data)
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item()
+
+        if epoch % 10 == 0 or epoch == epochs - 1:
+            print(f"[GraphRNN] Epoch {epoch+1}/{epochs} - Loss: {total_loss:.4f}")
 
     return model

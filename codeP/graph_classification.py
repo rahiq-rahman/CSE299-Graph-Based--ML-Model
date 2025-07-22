@@ -4,8 +4,7 @@ from torch_geometric.nn import GCNConv, GATConv, SAGEConv, global_mean_pool
 
 
 #GCN
-def graph_classification_gcn(train_loader, test_loader, input_dim, num_classes, epochs=100):
-    class GCNGraphClassifier(torch.nn.Module):
+class GCNGraphClassifier(torch.nn.Module):
         def __init__(self, input_dim, hidden_dim, output_dim):
             super(GCNGraphClassifier, self).__init__()
             self.conv1 = GCNConv(input_dim, hidden_dim)
@@ -21,6 +20,7 @@ def graph_classification_gcn(train_loader, test_loader, input_dim, num_classes, 
 
             return self.classifier(x)
 
+def graph_classification_gcn(train_loader, test_loader, input_dim, num_classes, epochs=100):
     model = GCNGraphClassifier(input_dim, hidden_dim=64, output_dim=num_classes)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
@@ -52,8 +52,7 @@ def graph_classification_gcn(train_loader, test_loader, input_dim, num_classes, 
 
 
 #GAT
-def graph_classification_gat(train_loader, test_loader, input_dim, num_classes, epochs=100):
-    class GATGraphClassifier(torch.nn.Module):
+class GATGraphClassifier(torch.nn.Module):
         def __init__(self, input_dim, hidden_dim, output_dim):
             super(GATGraphClassifier, self).__init__()
             self.conv1 = GATConv(input_dim, hidden_dim, heads=4, concat=True)
@@ -68,6 +67,7 @@ def graph_classification_gat(train_loader, test_loader, input_dim, num_classes, 
             x = global_mean_pool(x, batch)
             return self.classifier(x)
 
+def graph_classification_gat(train_loader, test_loader, input_dim, num_classes, epochs=100):
     model = GATGraphClassifier(input_dim, hidden_dim=64, output_dim=num_classes)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
@@ -99,8 +99,7 @@ def graph_classification_gat(train_loader, test_loader, input_dim, num_classes, 
 
 
 #GraphSAGE
-def graph_classification_graphsage(train_loader, test_loader, input_dim, num_classes, epochs=100):
-    class SAGEGraphClassifier(torch.nn.Module):
+class SAGEGraphClassifier(torch.nn.Module):
         def __init__(self, input_dim, hidden_dim, output_dim):
             super(SAGEGraphClassifier, self).__init__()
             self.conv1 = SAGEConv(input_dim, hidden_dim)
@@ -115,6 +114,7 @@ def graph_classification_graphsage(train_loader, test_loader, input_dim, num_cla
             x = global_mean_pool(x, batch)
             return self.classifier(x)
 
+def graph_classification_graphsage(train_loader, test_loader, input_dim, num_classes, epochs=100):
     model = SAGEGraphClassifier(input_dim, hidden_dim=64, output_dim=num_classes)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 

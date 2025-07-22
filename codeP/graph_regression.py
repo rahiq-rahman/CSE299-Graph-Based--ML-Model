@@ -4,20 +4,20 @@ from torch_geometric.nn import GCNConv, GATConv, SAGEConv, global_mean_pool
 
 
 #GCN
-def graph_regression_gcn(train_loader, test_loader, input_dim, epochs=100):
-    class GCNReg(torch.nn.Module):
-        def __init__(self):
-            super().__init__()
-            self.conv1 = GCNConv(input_dim, 64)
-            self.conv2 = GCNConv(64, 64)
-            self.head = torch.nn.Linear(64, 1)
-        def forward(self, x, edge_index, batch):
-            x = F.relu(self.conv1(x, edge_index))
-            x = F.relu(self.conv2(x, edge_index))
-            x = global_mean_pool(x, batch)
-            return self.head(x)
+class GCNReg(torch.nn.Module):
+    def __init__(self, input_dim):
+        super().__init__()
+        self.conv1 = GCNConv(input_dim, 64)
+        self.conv2 = GCNConv(64, 64)
+        self.head = torch.nn.Linear(64, 1)
+    def forward(self, x, edge_index, batch):
+        x = F.relu(self.conv1(x, edge_index))
+        x = F.relu(self.conv2(x, edge_index))
+        x = global_mean_pool(x, batch)
+        return self.head(x)
 
-    model = GCNReg()
+def graph_regression_gcn(train_loader, test_loader, input_dim, epochs=100):
+    model = GCNReg(input_dim)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
     criterion = torch.nn.MSELoss()
     for epoch in range(epochs):
@@ -39,20 +39,20 @@ def graph_regression_gcn(train_loader, test_loader, input_dim, epochs=100):
 
 
 #GAT
-def graph_regression_gat(train_loader, test_loader, input_dim, epochs=100):
-    class GATReg(torch.nn.Module):
-        def __init__(self):
-            super().__init__()
-            self.conv1 = GATConv(input_dim, 64, heads=4, concat=True)
-            self.conv2 = GATConv(64*4, 64, heads=4, concat=False)
-            self.head = torch.nn.Linear(64,1)
-        def forward(self, x, edge_index, batch):
-            x = F.elu(self.conv1(x, edge_index))
-            x = F.elu(self.conv2(x, edge_index))
-            x = global_mean_pool(x, batch)
-            return self.head(x)
+class GATReg(torch.nn.Module):
+    def __init__(self, input_dim):
+        super().__init__()
+        self.conv1 = GATConv(input_dim, 64, heads=4, concat=True)
+        self.conv2 = GATConv(64*4, 64, heads=4, concat=False)
+        self.head = torch.nn.Linear(64,1)
+    def forward(self, x, edge_index, batch):
+        x = F.elu(self.conv1(x, edge_index))
+        x = F.elu(self.conv2(x, edge_index))
+        x = global_mean_pool(x, batch)
+        return self.head(x)
 
-    model = GATReg()
+def graph_regression_gat(train_loader, test_loader, input_dim, epochs=100):
+    model = GATReg(input_dim)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
     criterion = torch.nn.MSELoss()
     for epoch in range(epochs):
@@ -74,19 +74,20 @@ def graph_regression_gat(train_loader, test_loader, input_dim, epochs=100):
 
 
 #GraphSAGE
-def graph_regression_graphsage(train_loader, test_loader, input_dim, epochs=100):
-    class SAGEReg(torch.nn.Module):
-        def __init__(self):
-            super().__init__()
-            self.conv1 = SAGEConv(input_dim, 64)
-            self.conv2 = SAGEConv(64,64)
-            self.head = torch.nn.Linear(64,1)
-        def forward(self, x, edge_index, batch):
-            x = F.relu(self.conv1(x, edge_index))
-            x = F.relu(self.conv2(x, edge_index))
-            x = global_mean_pool(x, batch)
-            return self.head(x)
-    model = SAGEReg()
+class SAGEReg(torch.nn.Module):
+    def __init__(self, input_dim):
+        super().__init__()
+        self.conv1 = SAGEConv(input_dim, 64)
+        self.conv2 = SAGEConv(64, 64)
+        self.head = torch.nn.Linear(64, 1)
+    def forward(self, x, edge_index, batch):
+        x = F.relu(self.conv1(x, edge_index))
+        x = F.relu(self.conv2(x, edge_index))
+        x = global_mean_pool(x, batch)
+        return self.head(x)
+
+def graph_regression_graphsage(train_loader, test_loader, input_dim, epochs=100):   
+    model = SAGEReg(input_dim)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
     criterion = torch.nn.MSELoss()
     for epoch in range(epochs):

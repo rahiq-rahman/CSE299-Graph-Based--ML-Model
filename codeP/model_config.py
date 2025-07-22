@@ -8,9 +8,9 @@ from node_clustering import node_clustering_gcn, node_clustering_gat, node_clust
 from node_embedding import node_embedding_gcn, node_embedding_gat, node_embedding_graphsage
 from graph_classification import graph_classification_gcn, graph_classification_gat, graph_classification_graphsage
 from graph_regression import graph_regression_gcn, graph_regression_gat, graph_regression_graphsage
-from graph_matching import graph_matching_siamese_gcn
-from graph_reconstruction import graph_reconstruction_gae
-from graph_generation import graph_generation_graphvae
+from graph_matching import graph_matching_siamese_gcn, graph_matching_gmn
+from graph_reconstruction import graph_reconstruction_gae, graph_reconstruction_grae
+from graph_generation import graph_generation_graphvae, graph_generation_graphrnn
 
 
 # Models
@@ -73,6 +73,21 @@ available_models = {
         "name": "GraphVAE",
         "module": {
             "graph_generation": graph_generation_graphvae,
+        }
+    },
+    "gmn": {
+        "module": {
+            "graph_matching": graph_matching_gmn,
+        }
+    },
+    "graphrnn": {
+        "module": {
+            "graph_generation": graph_generation_graphrnn,
+        }
+    },
+    "grae": {
+        "module": {
+            "graph_reconstruction": graph_reconstruction_grae,
         }
     },
 }
