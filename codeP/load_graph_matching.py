@@ -1,14 +1,20 @@
-import os
-import torch
-import torch.serialization
-from torch_geometric.data.data import Data
-
-torch.serialization.add_safe_globals([Data])
+from loader_config import load_named_files
 
 def load_graph_matching_pairs(data_dir):
     pairs = []
-    for file in os.listdir(data_dir):
-        if file.endswith(".pt"):
-            g1, g2, label = torch.load(os.path.join(data_dir, file), weights_only=False)
-            pairs.append((g1, g2, label))
+    data_dict = load_named_files(data_dir)
+
+    for key, value in data_dict.items():
+        if isinstance(value, dict):
+            g1 = value.get("g1") or value.get("graph1")
+            g2 = value.get("g2") or value.get("graph2")
+            label = value.get("label")
+            if g1 is not None and g2 is not None and label is not None:
+                pairs.append((g1, g2, label))
+        elif isinstance(value, (list, tuple)) and len(value) == 3:
+            pairs.append(tuple(value))
+
+    if not pairs:
+        raise ValueError("No valid graph matching pairs found.")
+
     return pairs

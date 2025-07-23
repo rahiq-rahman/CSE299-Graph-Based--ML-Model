@@ -1,37 +1,52 @@
-import os
+import torch
+from loader_config import load_named_files, safe_tensor
 
-def load_movielens_from_udata(filepath, return_ratings=False):
-    interactions = []
-    user_ids = set()
-    item_ids = set()
+def is_edge_index(t):
+    return (
+        isinstance(t, torch.Tensor) and
+        t.ndim == 2 and
+        ((t.shape[0] == 2) or (t.shape[1] == 2)) and
+        t.dtype in [torch.int32, torch.int64] and
+        t.max().item() < 100_000
+    )
 
-    with open(filepath, 'r') as f:
-        for line in f:
-            parts = line.strip().split('\t')
-            if len(parts) < 3:
-                continue
-            user = int(parts[0])
-            item = int(parts[1])
-            rating = float(parts[2])
+def is_feature_matrix(t):
+    return (
+        isinstance(t, torch.Tensor) and
+        t.ndim == 2 and
+        t.shape[1] > 1 and
+        t.dtype in [torch.float32, torch.float64]
+    )
 
-            user_ids.add(user)
-            item_ids.add(item)
+def load_movielens(training_path, testing_path):
+    train_data = load_named_files(training_path)
+    test_data = load_named_files(testing_path)
 
-            if return_ratings:
-                interactions.append((user, item, rating))
-            else:
-                interactions.append((user, item))
+    x = train_edge_index = test_edge_index = None
 
-    user_id_map = {uid: idx for idx, uid in enumerate(sorted(user_ids))}
-    item_id_map = {iid: idx + len(user_id_map) for idx, iid in enumerate(sorted(item_ids))}
+    for name, data in train_data.items():
+        t = safe_tensor(data)
+        if x is None and is_feature_matrix(t):
+            x = t.float()
+            print(f"[Match] Feature matrix from: {name}")
+        elif train_edge_index is None and is_edge_index(t):
+            train_edge_index = t.long()
+            if train_edge_index.shape[0] != 2:
+                train_edge_index = train_edge_index.T
+            print(f"[Match] Train edge_index from: {name}")
 
-    if return_ratings:
-        mapped_interactions = [(user_id_map[u], item_id_map[i], r) for u, i, r in interactions]
-    else:
-        mapped_interactions = [(user_id_map[u], item_id_map[i]) for u, i in interactions]
+    for name, data in test_data.items():
+        t = safe_tensor(data)
+        if test_edge_index is None and is_edge_index(t):
+            test_edge_index = t.long()
+            if test_edge_index.shape[0] != 2:
+                test_edge_index = test_edge_index.T
+            print(f"[Match] Test edge_index from: {name}")
 
-    num_users = len(user_id_map)
-    num_items = len(item_id_map)
+    if x is None or train_edge_index is None or test_edge_index is None:
+        raise ValueError("Missing required data")
 
-    return mapped_interactions, num_users, num_items
+    num_users = train_edge_index[0].max().item() + 1
+    num_items = x.size(0) - num_users
 
+    return x, train_edge_index, test_edge_index, num_users, num_items
