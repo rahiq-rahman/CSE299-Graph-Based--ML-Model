@@ -11,10 +11,7 @@ env/
 .venv/
 
 # Data files
-data/cora/
-data/karate_regression/
-data/movielens/
-data/datasetName/
+
 
 # Shell script logs/output (optional)
 *.log
