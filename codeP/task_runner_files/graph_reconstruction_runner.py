@@ -1,7 +1,6 @@
 import torch
 import os
 import random
-import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.metrics import (
     roc_auc_score,
@@ -98,23 +97,6 @@ def run_graph_reconstruction(model_fn, training_path, testing_path, model_path):
     plt.tight_layout()
     plt.show()
 
-    # Histogram of Scores
-    pos_scores_np = scores[:len(pos_scores)]
-    neg_scores_np = scores[len(pos_scores):]
-
-    plt.figure(figsize=(6, 4))
-    plt.hist(pos_scores_np, bins=30, alpha=0.6, label='Positive', color='blue', density=True)
-    plt.axvline(np.mean(pos_scores_np), color='blue', linestyle='--', label='Pos Mean')
-    plt.hist(neg_scores_np, bins=30, alpha=0.6, label='Negative', color='orange', density=True)
-    plt.axvline(np.mean(neg_scores_np), color='orange', linestyle='--', label='Neg Mean')
-    plt.title("Score Distribution (Positive vs Negative Edges)")
-    plt.xlabel("Predicted Score")
-    plt.ylabel("Density")
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
-
     # Original vs Reconstructed Graphs
     all_possible_edges = torch.cat([test_edge_index, neg_test_edges], dim=1)
     edge_scores_tensor = torch.tensor(scores)
@@ -146,20 +128,20 @@ def run_graph_reconstruction(model_fn, training_path, testing_path, model_path):
 
     # Subgraph of the original graph
     plt.figure(figsize=(6, 5))
-    nx.draw_networkx_nodes(G_sub_all, pos=layout_sub_all, node_size=50, node_color='gray', alpha=0.3)  # background nodes
+    nx.draw_networkx_nodes(G_sub_all, pos=layout_sub_all, node_size=50, node_color='gray', alpha=0.3)
     nx.draw_networkx_edges(G_original_sub, pos=layout_sub_all, edge_color='blue', alpha=0.5)
     nx.draw_networkx_nodes(G_original_sub, pos=layout_sub_all, node_size=50, node_color='blue', alpha=0.7)
-    plt.title("Original Graph Subgraph (Sample)")
+    plt.title("Original Graph Subgraph")
     plt.axis('off')
     plt.tight_layout()
     plt.show()
 
     # Subgraph of the reconstructed graph
     plt.figure(figsize=(6, 5))
-    nx.draw_networkx_nodes(G_sub_all, pos=layout_sub_all, node_size=50, node_color='gray', alpha=0.3)  # background nodes
+    nx.draw_networkx_nodes(G_sub_all, pos=layout_sub_all, node_size=50, node_color='gray', alpha=0.3)
     nx.draw_networkx_edges(G_reconstructed_sub, pos=layout_sub_all, edge_color='green', alpha=0.5)
     nx.draw_networkx_nodes(G_reconstructed_sub, pos=layout_sub_all, node_size=50, node_color='green', alpha=0.7)
-    plt.title("Reconstructed Graph Subgraph (Sample)")
+    plt.title("Reconstructed Graph Subgraph")
     plt.axis('off')
     plt.tight_layout()
     plt.show()

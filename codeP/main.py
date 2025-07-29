@@ -5,7 +5,6 @@ from model_config import available_models
 from dataset_config import valid_datasets
 from task_runner import run_task
 
-
 # Arguments
 parser = argparse.ArgumentParser()
 parser.add_argument('--model', required=True)
@@ -28,7 +27,6 @@ if selected_task not in available_models[model_key]["module"]:
 if selected_task not in valid_datasets or dataset_key not in valid_datasets[selected_task]:
     print(f"Dataset '{dataset_key}' is not compatible with task '{selected_task}'")
     sys.exit(1)
-
 
 # Paths
 data_root = os.path.join(os.path.dirname(__file__), "..", "data")

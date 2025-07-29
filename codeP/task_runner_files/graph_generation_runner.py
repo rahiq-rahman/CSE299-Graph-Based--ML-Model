@@ -35,7 +35,7 @@ def run_graph_generation(model_fn, training_path, testing_path, model_path):
         avg_degree = sum(degrees) / len(degrees) if degrees else 0
         max_degree = max(degrees) if degrees else 0
 
-        print(f"Avg Degree: {avg_degree:.2f}\nMax Degree: {max_degree}")
+        print(f"Avg Degree: {avg_degree:.2f}\nMax Degree: {max_degree}\n")
 
         edge_index = g.edge_index.cpu().numpy()
         G_nx = nx.Graph()

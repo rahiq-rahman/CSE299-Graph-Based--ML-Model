@@ -1,10 +1,7 @@
 import torch
 import os
 import random
-import numpy as np
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
-import matplotlib.pyplot as plt
-import seaborn as sns
+from sklearn.metrics import accuracy_score, classification_report
 from load_graph_matching import load_graph_matching_pairs
 
 def run_graph_matching(model_fn, training_path, testing_path, model_path):
@@ -29,15 +26,6 @@ def run_graph_matching(model_fn, training_path, testing_path, model_path):
     print(f"Accuracy: {accuracy_score(y_true, y_pred):.4f}")
     print("Classification Report:")
     print(classification_report(y_true, y_pred))
-
-    cm = confusion_matrix(y_true, y_pred)
-    plt.figure(figsize=(6, 5))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
-    plt.title("Confusion Matrix")
-    plt.xlabel("Predicted")
-    plt.ylabel("Actual")
-    plt.tight_layout()
-    plt.show()
 
     print("\nSample Graph Matching Results:")
     for i in random.sample(range(len(test_pairs)), min(5, len(test_pairs))):

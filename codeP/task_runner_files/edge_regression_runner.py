@@ -1,6 +1,8 @@
 import torch
 import os
 import random
+from sklearn.metrics import mean_squared_error, r2_score
+
 from load_movielens_edge import load_movielens_edge
 
 def run_edge_regression(model_fn, training_path, testing_path, model_path):
@@ -16,12 +18,25 @@ def run_edge_regression(model_fn, training_path, testing_path, model_path):
 
     model.eval()
     regressor.eval()
-    node_embeddings = model(x, edge_index)
-    edge_emb = node_embeddings[edge_index[0]] * node_embeddings[edge_index[1]]
-    preds = regressor(edge_emb).squeeze()
+    with torch.no_grad():
+        node_embeddings = model(x, edge_index)
+        edge_emb = node_embeddings[edge_index[0]] * node_embeddings[edge_index[1]]
+        preds = regressor(edge_emb).squeeze()
 
-    print("\nSample Edge Regression Results:")
-    for _ in range(3):
-        eid = random.randint(0, edge_index.size(1) - 1)
+    # Evaluation
+    y_true = edge_ratings[test_mask].cpu().numpy()
+    y_pred = preds[test_mask].cpu().numpy()
+    mse = mean_squared_error(y_true, y_pred)
+    r2 = r2_score(y_true, y_pred)
+
+    print(f"\nMean Squared Error (MSE): {mse:.4f}")
+    print(f"R² Score: {r2:.4f}")
+
+    print("\nSample Predictions:")
+    test_indices = torch.where(test_mask)[0].tolist()
+    samples = random.sample(test_indices, min(5, len(test_indices)))
+    for eid in samples:
         u, v = edge_index[0, eid].item(), edge_index[1, eid].item()
-        print(f"Edge ({u}, {v}) → Predicted: {preds[eid]:.2f} | Actual: {edge_ratings[eid]:.2f}")
+        pred = preds[eid].item()
+        true = edge_ratings[eid].item()
+        print(f"Edge ({u}, {v}) → Predicted: {pred:.2f}, Actual: {true:.2f}, Error: {abs(pred - true):.2f}")
