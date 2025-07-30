@@ -69,8 +69,8 @@ def run_graph_reconstruction(model_fn, training_path, testing_path, model_path):
     print("\nGraph Reconstruction Results:")
     print(f"AUC: {auc:.4f}")
     print(f"Average Precision (AP): {ap:.4f}")
-    print(f"F1-Score (threshold 0.5): {f1:.4f}")
-    print(f"Reconstruction Accuracy (threshold 0.5): {acc:.4f}")
+    print(f"F1-Score: {f1:.4f}")
+    print(f"Reconstruction Accuracy: {acc:.4f}")
 
     # ROC Curve
     fpr, tpr, _ = roc_curve(labels, scores)
