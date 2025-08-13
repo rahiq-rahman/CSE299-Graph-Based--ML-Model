@@ -63,5 +63,3 @@ This framework can be applied in multiple domains:
 
 ---
 
-## 📂 Project Structure
-
